@@ -1,6 +1,6 @@
 # nodes/simple_nodes.py
-# A collection of basic nodes to test the core functionality.
-
+# Updated nodes that correctly use widget values and passed arguments.
+import inspect
 from core.definitions import BaseNode, SocketType, InputWidget
 
 # --- INPUT NODES ---
@@ -9,15 +9,15 @@ class TextNode(BaseNode):
     CATEGORY = "Input"
     OUTPUT_SOCKETS = {"text_out": SocketType.TEXT}
     
-    value = InputWidget(widget_type="TEXT", default="Hello, World!")
+    value = InputWidget(widget_type="TEXT", default="Hello from backend!")
 
     def load(self):
-        pass # Nothing to load
+        pass
 
     def execute(self):
-        # In a real implementation, the engine would pass widget values.
-        # For now, we just return the default.
-        return (self.value.default,)
+        # This node has no inputs, so it uses its widget value.
+        text_value = self.widget_values.get('value', self.value.default)
+        return (text_value,)
 
 class NumberNode(BaseNode):
     CATEGORY = "Input"
@@ -29,8 +29,8 @@ class NumberNode(BaseNode):
         pass
 
     def execute(self):
-        return (self.value.default,)
-
+        num_value = self.widget_values.get('value', self.value.default)
+        return (float(num_value),) # Ensure it's a float
 
 # --- PROCESSING NODE ---
 
@@ -43,10 +43,9 @@ class AddNode(BaseNode):
         pass
 
     def execute(self, a, b):
-        # The engine will pass the values from connected nodes as arguments.
-        result = a + b
+        # This node's logic is driven by its inputs, which are passed by the engine.
+        result = float(a) + float(b)
         return (result,)
-
 
 # --- OUTPUT NODE ---
 
@@ -57,7 +56,9 @@ class DisplayNode(BaseNode):
     def load(self):
         pass
 
-    def execute(self, value_in):
+    # FIX: Make 'value_in' optional with a default value of None.
+    # This prevents an error if the node is run without an input connection.
+    def execute(self, value_in=None):
         # This node just prints the value it receives to the backend console.
-        print(f"--- DISPLAY NODE: {value_in} ---")
+        print(f"--- DISPLAY NODE RECEIVED: {value_in} ---")
         return () # No output

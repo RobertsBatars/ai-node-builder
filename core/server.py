@@ -1,8 +1,9 @@
 # core/server.py
 # This file sets up the FastAPI web server and its endpoints.
 
+import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from core.engine import NodeEngine
 
 # Initialize the main FastAPI application and the Node Engine
@@ -17,7 +18,11 @@ async def get_frontend():
 @app.get("/get_nodes")
 async def get_nodes():
     """Provides the UI blueprint for all available nodes."""
-    return engine.generate_ui_blueprints()
+    blueprints_json_string = engine.generate_ui_blueprints()
+    # The JSON string is already formatted, but we need to parse it back to a Python object
+    # for JSONResponse to work correctly and set the right content-type header.
+    blueprints_object = json.loads(blueprints_json_string)
+    return JSONResponse(content=blueprints_object)
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -31,8 +36,12 @@ async def websocket_endpoint(websocket: WebSocket):
             # Check if it's a 'run' command
             if data.get("action") == "run":
                 graph_data = data.get("graph")
+                start_node_id = data.get("start_node_id")
+                if start_node_id is None:
+                    await websocket.send_text("Error: No start node selected.")
+                    continue
                 # Pass the graph to the engine for execution
-                await engine.run_workflow(graph_data, websocket)
+                await engine.run_workflow(graph_data, str(start_node_id), websocket)
 
     except WebSocketDisconnect:
         print("Client disconnected")
