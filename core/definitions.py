@@ -10,23 +10,19 @@ WIDGET_ORDER_COUNTER = 0
 
 class SocketType(Enum):
     """
-    Defines the types of data that can flow through node connections.
+    Defines the data types for connections. The frontend uses these for validation.
     """
     TEXT = "TEXT"
     NUMBER = "NUMBER"
     IMAGE = "IMAGE"
-    # FIX: Use "*" as the wildcard type, as expected by litegraph.js
     ANY = "*"
+    # The concept of a dependency is now a property of the socket, not its data type.
 
 class InputWidget:
     """
     A data container class used to declare a UI widget for a node's properties.
-    The engine inspects node classes for attributes of this type to auto-generate the UI.
     """
     def __init__(self, widget_type="STRING", default=None, **properties):
-        """
-        Initializes the widget definition.
-        """
         global WIDGET_ORDER_COUNTER
         self.widget_type = widget_type
         self.default = default
@@ -40,20 +36,16 @@ class BaseNode(ABC):
     The Abstract Base Class for all nodes in the application.
     """
     CATEGORY = "Default"
+    # Sockets are now defined as dictionaries containing their type and other properties.
     INPUT_SOCKETS = {}
     OUTPUT_SOCKETS = {}
 
     def __init__(self, engine, node_info):
-        """
-        Initializes the node instance.
-        """
         self.engine = engine
         self.node_info = node_info
         
         self.widget_values = {}
-        # This logic correctly parses the 'widgets_values' array from LiteGraph
         if 'widgets_values' in self.node_info and self.node_info['widgets_values'] is not None:
-            # Sort the declared widgets by their creation order to match the frontend
             widget_declarations = sorted(
                 [w for w in inspect.getmembers(self.__class__) if isinstance(w[1], InputWidget)],
                 key=lambda x: x[1].order

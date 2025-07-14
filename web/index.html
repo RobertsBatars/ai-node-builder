@@ -2,7 +2,6 @@
 <html>
 <head>
     <title>Modular AI Node App</title>
-    <!-- Use the local copy of litegraph.js provided -->
     <script type="text/javascript" src="https://cdn.jsdelivr.net/gh/jagenjo/litegraph.js/build/litegraph.js"></script>
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/gh/jagenjo/litegraph.js/css/litegraph.css">
     <style>
@@ -76,9 +75,7 @@
                 LiteGraph.clearRegisteredTypes();
 
                 const response = await fetch('/get_nodes');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const nodeBlueprints = await response.json();
                 console.log("Received blueprints:", nodeBlueprints);
 
@@ -94,10 +91,7 @@
                     }
                     DynamicNode.title = blueprint.name;
                     DynamicNode.category = blueprint.category;
-                    
-                    // *** FIX: This flag is required for litegraph to include widget values in the serialization. ***
                     DynamicNode.prototype.serialize_widgets = true;
-
                     LiteGraph.registerNodeType(`${blueprint.category}/${blueprint.name}`, DynamicNode);
                 });
                 log("Nodes loaded. Right-click to add nodes.");
@@ -107,20 +101,24 @@
             }
 
             runButton.addEventListener("click", () => {
-                const selectedNode = canvas.current_node;
-                if (!selectedNode) {
+                // FIX: Access the public 'selected_nodes' property directly.
+                const selected_nodes_map = canvas.selected_nodes;
+                const selected_ids = Object.keys(selected_nodes_map);
+
+                if (selected_ids.length === 0) {
                     alert("Please select a node to start the workflow from.");
                     return;
                 }
+                const start_node_id = selected_ids[0];
 
                 if (ws.readyState === WebSocket.OPEN) {
                     log("Sending graph to backend...");
                     const graphData = graph.serialize();
-                    console.log("Sending graph data:", graphData); // For debugging
+                    console.log("Sending graph data:", graphData);
                     ws.send(JSON.stringify({
                         action: "run",
                         graph: graphData,
-                        start_node_id: selectedNode.id
+                        start_node_id: start_node_id
                     }));
                 } else {
                     log("Cannot run. WebSocket is not connected.");
