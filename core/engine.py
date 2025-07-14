@@ -63,8 +63,8 @@ class NodeEngine:
 
         # --- State for this specific run ---
         outputs_cache = {}
+        active_tasks = {}
         
-        # Build maps for easy link lookups
         source_for_target_input = {}
         targets_for_source_output = defaultdict(list)
         for link in graph_data['links']:
@@ -78,12 +78,28 @@ class NodeEngine:
             if node_id in outputs_cache:
                 print(f"LOG: Cache hit for node {node_id}.")
                 return outputs_cache[node_id]
+            
+            if node_id in active_tasks:
+                print(f"LOG: Awaiting existing task for node {node_id}.")
+                return await active_tasks[node_id]
 
+            # Create and store the task *before* awaiting it to prevent re-runs in parallel branches
+            task = asyncio.create_task(_resolve_and_execute(node_id))
+            active_tasks[node_id] = task
+            
+            try:
+                result = await task
+                outputs_cache[node_id] = result
+                return result
+            finally:
+                if node_id in active_tasks:
+                    del active_tasks[node_id]
+
+        async def _resolve_and_execute(node_id):
             node_instance = nodes_map[node_id]
             await websocket.send_text(f"Resolving: {node_instance.__class__.__name__} (ID: {node_id})")
             print(f"LOG: Preparing to execute node {node_id} ({node_instance.__class__.__name__})")
             
-            # --- Dependency Pull Phase ---
             kwargs = {}
             dependency_tasks = []
             
@@ -91,12 +107,9 @@ class NodeEngine:
                 source_info = source_for_target_input.get(f"{node_id}:{i}")
                 if source_info:
                     source_node_id, source_slot_str = source_info.split(':')
-                    source_slot_idx = int(source_slot_str)
-                    
-                    # Recursively execute upstream nodes to get their data
                     print(f"LOG: Node {node_id} needs input '{name}'. Getting from {source_node_id}.")
                     dependency_tasks.append(
-                        resolve_dependency(source_node_id, source_slot_idx, name)
+                        resolve_dependency(source_node_id, int(source_slot_str), name)
                     )
 
             if dependency_tasks:
@@ -108,7 +121,6 @@ class NodeEngine:
             print(f"LOG: All inputs for {node_id} resolved. Calling execute() with args: {kwargs}")
             try:
                 node_outputs = node_instance.execute(**kwargs)
-                outputs_cache[node_id] = node_outputs
                 print(f"LOG: Node {node_id} executed. Outputs: {node_outputs}")
                 
                 # --- Push Phase ---
@@ -118,9 +130,14 @@ class NodeEngine:
                         for target_info in targets_for_source_output.get(f"{node_id}:{i}", []):
                             target_node_id, _ = target_info.split(':')
                             print(f"LOG: Pushing output from {node_id} to {target_node_id}.")
-                            downstream_tasks.append(execute_node(target_node_id))
+                            # This creates a new, independent task for the downstream node.
+                            # The current task does NOT wait for it, preventing deadlock.
+                            downstream_tasks.append(asyncio.create_task(execute_node(target_node_id)))
                     if downstream_tasks:
-                        await asyncio.gather(*downstream_tasks)
+                        # This was the source of the deadlock. We should not wait here.
+                        # The main loop will handle waiting for all tasks to complete.
+                        # await asyncio.gather(*downstream_tasks)
+                        pass
                 
                 return node_outputs
             except Exception as e:
@@ -140,7 +157,14 @@ class NodeEngine:
 
         # --- Kick off the workflow ---
         if start_node_id in nodes_map:
-            await execute_node(start_node_id)
+            # We create the main task but don't need to await it here,
+            # as the recursive calls will handle the entire chain.
+            main_task = asyncio.create_task(execute_node(start_node_id))
+            # FIX: Wait for the main task and any spawned tasks to complete.
+            while True:
+                if not active_tasks:
+                    break
+                await asyncio.sleep(0.01)
         else:
             await websocket.send_text(f"Error: Start node {start_node_id} not found.")
             return
