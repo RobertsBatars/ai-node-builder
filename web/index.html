@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Modular AI Node App</title>
+    <!-- Load LiteGraph.js library and its CSS from a CDN -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/gh/jagenjo/litegraph.js/css/litegraph.css">
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/gh/jagenjo/litegraph.js/build/litegraph.js"></script>
+    <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            font-family: sans-serif;
+            background-color: #1a1a1a;
+            color: #eee;
+            overflow: hidden;
+        }
+        #main-canvas {
+            border: none;
+        }
+        #top-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 10px;
+            background-color: #2a2a2a;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            z-index: 10;
+            display: flex;
+            align-items: center;
+        }
+        #run-button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #run-button:hover {
+            background-color: #45a049;
+        }
+        #status-log {
+            margin-left: 20px;
+            font-style: italic;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="top-bar">
+        <button id="run-button">RUN</button>
+        <div id="status-log">Status: Disconnected</div>
+    </div>
+
+    <canvas id='main-canvas'></canvas>
+
+    <script>
+        // =================================================================
+        // WIDGET FACTORY MODULE (conceptually, web/js/widget_factory.js)
+        // =================================================================
+        // This part is responsible for creating UI widgets on the nodes.
+        // It's kept separate to make it easy to add new widget types.
+        const WidgetFactory = {
+            create: (nodeInstance, widgetDefinition) => {
+                const { name, type, default: defaultValue, properties } = widgetDefinition;
+                
+                // LiteGraph's addWidget takes: type, name, value, callback, options
+                switch (type.toUpperCase()) {
+                    case "TEXT":
+                        nodeInstance.addWidget("text", name, defaultValue || "", val => {
+                            // This callback runs when the value changes in the UI
+                            console.log(`Widget ${name} changed to: ${val}`);
+                        }, properties);
+                        break;
+                    case "NUMBER":
+                        nodeInstance.addWidget("number", name, defaultValue || 0, val => {
+                            console.log(`Widget ${name} changed to: ${val}`);
+                        }, { min: properties.min, max: properties.max, step: properties.step || 1 });
+                        break;
+                    // Add cases for "SLIDER", "COMBOBOX", etc. here later
+                    default:
+                        console.warn(`Unsupported widget type: ${type}`);
+                        // Add a simple text widget as a fallback
+                        nodeInstance.addWidget("text", name, `Unsupported: ${type}`, () => {}, { disabled: true });
+                }
+            }
+        };
+
+        // =================================================================
+        // MAIN APPLICATION LOGIC (conceptually, web/js/main.js)
+        // =================================================================
+        (async () => {
+            const statusLog = document.getElementById('status-log');
+            const log = (message) => {
+                console.log(message);
+                statusLog.textContent = `Status: ${message}`;
+            };
+
+            // --- 1. Setup LiteGraph Canvas ---
+            const graph = new LGraph();
+            const canvas = new LGraphCanvas("#main-canvas", graph);
+            
+            const resizeCanvas = () => {
+                canvas.resize(window.innerWidth, window.innerHeight);
+            };
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+
+            // --- 2. Connect to Backend WebSocket ---
+            const ws = new WebSocket(`ws://${window.location.host}/ws`);
+            ws.onopen = () => log("Connected to backend");
+            ws.onmessage = (event) => log(event.data);
+            ws.onclose = () => log("Disconnected from backend");
+            ws.onerror = () => log("Connection error");
+
+            // --- 3. Fetch Node Definitions and Build UI ---
+            log("Fetching node definitions...");
+            try {
+                const response = await fetch('/get_nodes');
+                const nodeBlueprints = await JSON.parse(await response.text());
+
+                nodeBlueprints.forEach(blueprint => {
+                    // Create a dynamic constructor function for this node type
+                    function DynamicNode() {
+                        // Add inputs and outputs defined by the backend
+                        blueprint.inputs.forEach(input => this.addInput(input.name, input.type));
+                        blueprint.outputs.forEach(output => this.addOutput(output.name, output.type));
+
+                        // Add widgets using our modular factory
+                        blueprint.widgets.forEach(widgetDef => {
+                            WidgetFactory.create(this, widgetDef);
+                        });
+                    }
+                    
+                    // Set the title that appears on the node in the UI
+                    DynamicNode.title = blueprint.name;
+                    DynamicNode.category = blueprint.category;
+
+                    // IMPORTANT: Register our newly created dynamic node type with LiteGraph
+                    LiteGraph.registerNodeType(`${blueprint.category}/${blueprint.name}`, DynamicNode);
+                });
+                log("Nodes loaded. Right-click to add nodes.");
+
+            } catch (error) {
+                log("Error loading node definitions.");
+                console.error(error);
+            }
+
+            // --- 4. Setup the "Run" Button ---
+            document.getElementById("run-button").addEventListener("click", () => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    log("Sending graph to backend...");
+                    const graphData = graph.serialize(); // Convert the visual graph to JSON
+                    ws.send(JSON.stringify({
+                        action: "run",
+                        graph: graphData
+                    }));
+                } else {
+                    log("Cannot run. WebSocket is not connected.");
+                }
+            });
+
+            // Start the LiteGraph rendering loop
+            graph.start();
+        })();
+    </script>
+</body>
+</html>
+
