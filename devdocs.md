@@ -1,10 +1,10 @@
 # **Project Architecture & Journey: Modular AI Node Application**
 
-## **1\. Introduction**
+## **1. Introduction**
 
 This document outlines the core architecture and design evolution for a modular, node-based graphical application. It is intended as a living reference, capturing not just the "what" but also the "why" behind the key design decisions, including a summary of implementation challenges and outcomes. The primary goals are extensibility, user-friendliness, and robust control over the execution flow.
 
-## **2\. Core Architecture: Decoupled Client-Server**
+## **2. Core Architecture: Decoupled Client-Server**
 
 The application is built on a decoupled client-server model. This was a foundational decision to ensure a responsive user interface that would not freeze while the backend performs heavy computations.
 
@@ -14,7 +14,7 @@ The application is built on a decoupled client-server model. This was a foundati
   * **Why?** Web technologies provide the most flexible and powerful tools for creating a modern and responsive UI. Using a library like LiteGraph.js provides a feature-rich node canvas out of the box.  
 * **API Layer**: A communication bridge using WebSockets for real-time updates and a REST API for initial data loading (like the list of available nodes).
 
-## **3\. Execution Model: The Journey from Theory to Practice**
+## **3. Execution Model: The Journey from Theory to Practice**
 
 The design of the execution engine evolved significantly through our discussions, moving from a simple concept to a more complex, parallel model. This journey revealed significant challenges in implementation.
 
@@ -32,19 +32,34 @@ To make the system flexible, we decided against a rigid, sequential execution or
 * **Start Node Driven**: Execution begins from a single, user-designated "Start Node" in the UI. This provides clear control over where a workflow begins.  
 * **Parallel by Default**: The engine was designed to be parallel using asyncio. When a node produces data on multiple output sockets, the engine should create concurrent, independent tasks for each downstream path.
 
-### **3.3. Implementation Challenges & Failures**
+### **3.3. The Stateful Execution Engine: A Robust Solution**
 
-While the design was sound in theory, the implementation of the asynchronous, parallel engine proved to be the primary point of failure.
+The initial, purely recursive `asyncio` engine faced significant deadlocking issues when handling the hybrid push/pull model. The root cause was a lack of state management; the engine couldn't differentiate between a node that was waiting for a dependency and one that was actively being executed. This led to circular waits.
 
-* **What Worked**:  
-  * The simple "push" model (e.g., NumberNode \-\> DisplayNode) was successfully implemented.  
-  * The "pull" model for dependencies (e.g., starting from AddNode to pull from two NumberNodes) was also successfully implemented in isolation.  
-* **What Failed (The Deadlock Issue)**:  
-  * The combination of push and pull in a single run (Test 3\) consistently failed.  
-  * **The Cause**: The engine's asynchronous logic created a deadlock. When a start node (e.g., NumberNode A) pushed its data to a middle node (AddNode), it would wait for the entire downstream graph to finish. However, the AddNode could not execute because it was waiting to pull data from its *other* dependency (NumberNode B), which was never triggered. The tasks for AddNode and NumberNode A ended up in a circular wait, causing the workflow to get stuck.  
-  * **Conclusion**: The attempts to fix this by simply re-arranging asyncio.gather or asyncio.create\_task were unsuccessful. This indicates that a more robust state management system is required within the engine, likely involving a task queue and a more sophisticated method of tracking when a node's inputs are fully satisfied before scheduling its execution. The simple recursive model was not sufficient for this hybrid design.
+To solve this, the engine was fundamentally rewritten to use a **state-machine model**.
 
-## **4\. Node Implementation and Framework (Successful Components)**
+*   **Why a State Machine?** A state machine provides a clear and robust framework for managing the lifecycle of each node during a workflow run. It eliminates ambiguity and race conditions by ensuring that nodes transition through well-defined states (`PENDING`, `WAITING`, `EXECUTING`, `DONE`). This was a more resilient alternative to complex locking mechanisms or trying to manage a tangle of interdependent `asyncio` tasks without a central state tracker.
+
+*   **The `run_context` Object**: A central `run_context` dictionary is now created for each workflow. It acts as the "single source of truth," tracking:
+    *   The state of every node.
+    *   A cache for input data as it arrives.
+    *   A list of inputs that each node is still waiting for.
+    *   A cache for node output results.
+    *   A set of all active `asyncio` tasks.
+
+*   **How it Works (The New Flow)**:
+    1.  **Triggering**: When a node is triggered (either by the user or an upstream node), the engine first checks its state in the `run_context`.
+    2.  **Setup (`PENDING` -> `WAITING`)**: If it's the first time the node is triggered, it's moved to the `WAITING` state. The engine identifies all its connected inputs and determines which ones are "pull" dependencies (marked with `is_dependency: True` in the node's definition). It then recursively triggers those dependency nodes.
+    3.  **Input Processing**: When an upstream node pushes data, the engine finds the waiting downstream node, stores the data in its `input_cache`, and removes that input from the node's "waiting list."
+    4.  **Execution (`WAITING` -> `EXECUTING`)**: After processing incoming data, the engine checks if the node's "waiting list" is empty. If it is, the node is moved to the `EXECUTING` state, and its `execute()` method is called with the fully assembled input data.
+    5.  **Completion (`EXECUTING` -> `DONE`)**: Once execution is finished, the node is marked as `DONE`, and its results are pushed to all downstream nodes, triggering the process anew.
+
+*   **Key Benefits of the New Model**:
+    *   **No Deadlocks**: A node is only executed once all its required inputs are explicitly resolved and cached. The "pull" and "push" actions are now decoupled, preventing circular waits.
+    *   **Correct Dependency Handling**: The engine now correctly respects the `is_dependency` flag, only pulling data when necessary and avoiding redundant pulls if the data is already being pushed.
+    *   **Clarity and Debuggability**: The state machine and verbose logging make the execution flow far easier to trace and debug.
+
+## **4. Node Implementation and Framework (Successful Components)**
 
 ### **4.1. The BaseNode Abstract Class**
 
@@ -60,7 +75,7 @@ The system for defining a node's UI was successful. It avoids the need for separ
 * **Automatic Generation**: On startup, the backend engine inspects each node class, finds these InputWidget declarations, and automatically builds a JSON "UI Blueprint" to send to the frontend.  
 * **Interactive Widgets**: The design supports widgets that can trigger backend functions via a callback property, enabling dynamic UI elements.
 
-## **5\. Tool and LLM Integration (Future Implementation)**
+## **5. Tool and LLM Integration (Future Implementation)**
 
 *This section outlines planned features that will build upon the core engine once it is stable.*
 
