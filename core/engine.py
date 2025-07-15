@@ -51,120 +51,164 @@ class NodeEngine:
     async def run_workflow(self, graph_data, start_node_id, websocket):
         await websocket.send_text("Engine: Initializing workflow...")
         print("\n--- NEW WORKFLOW RUN ---")
-        
+
+        # 1. --- Initialization ---
         nodes_map = {
             str(n['id']): self.node_classes[n['type'].split('/')[-1]](self, n)
             for n in graph_data['nodes'] if n['type'].split('/')[-1] in self.node_classes
         }
-
         for node in nodes_map.values():
             node.load()
         await websocket.send_text("Engine: All nodes loaded.")
 
-        # --- State for this specific run ---
-        outputs_cache = {}
-        active_tasks = {}
-        
-        source_for_target_input = {}
-        targets_for_source_output = defaultdict(list)
+        # 2. --- Context Setup ---
+        # This context will hold the state for the entire workflow run
+        run_context = {
+            "nodes": nodes_map,
+            "websocket": websocket,
+            "node_states": defaultdict(lambda: "PENDING"), # PENDING, WAITING, EXECUTING, DONE
+            "input_cache": defaultdict(dict), # Cache for incoming data
+            "waiting_on": defaultdict(list), # List of inputs a node is waiting for
+            "outputs_cache": {}, # Cache for node results
+            "active_tasks": set(), # To track all running asyncio tasks
+            "source_map": {}, # { "target_id:slot": "source_id:slot" }
+            "target_map": defaultdict(list) # { "source_id:slot": ["target_id:slot", ...] }
+        }
         for link in graph_data['links']:
-            link_id, source_id, source_slot, target_id, target_slot, link_type = link
+            _, source_id, source_slot, target_id, target_slot, _ = link
             source_id, target_id = str(source_id), str(target_id)
-            source_for_target_input[f"{target_id}:{target_slot}"] = f"{source_id}:{source_slot}"
-            targets_for_source_output[f"{source_id}:{source_slot}"].append(f"{target_id}:{target_slot}")
+            run_context["source_map"][f"{target_id}:{target_slot}"] = f"{source_id}:{source_slot}"
+            run_context["target_map"][f"{source_id}:{source_slot}"].append(f"{target_id}:{target_slot}")
 
-        async def execute_node(node_id):
-            """Main recursive execution function. Ensures a node is only run once."""
-            if node_id in outputs_cache:
-                print(f"LOG: Cache hit for node {node_id}.")
-                return outputs_cache[node_id]
-            
-            if node_id in active_tasks:
-                print(f"LOG: Awaiting existing task for node {node_id}.")
-                return await active_tasks[node_id]
+        # 3. --- Core Execution Logic ---
+        async def trigger_node(node_id, activated_by_input=None):
+            """The main entry point for processing a node."""
+            node_state = run_context["node_states"][node_id]
+            if node_state in ["EXECUTING", "DONE"]:
+                print(f"LOG: Node {node_id} is already {node_state}. Skipping.")
+                return
 
-            # Create and store the task *before* awaiting it to prevent re-runs in parallel branches
-            task = asyncio.create_task(_resolve_and_execute(node_id))
-            active_tasks[node_id] = task
-            
-            try:
-                result = await task
-                outputs_cache[node_id] = result
-                return result
-            finally:
-                if node_id in active_tasks:
-                    del active_tasks[node_id]
+            node_instance = run_context["nodes"][node_id]
+            print(f"LOG: Triggering node {node_id} ({node_instance.__class__.__name__}). Current state: {node_state}")
 
-        async def _resolve_and_execute(node_id):
-            node_instance = nodes_map[node_id]
-            await websocket.send_text(f"Resolving: {node_instance.__class__.__name__} (ID: {node_id})")
-            print(f"LOG: Preparing to execute node {node_id} ({node_instance.__class__.__name__})")
+            # If this is the first time we're seeing this node, set it up.
+            if node_state == "PENDING":
+                await setup_node_for_execution(node_id, activated_by_input)
             
-            kwargs = {}
+            # If the node was activated by an input, process that data.
+            if activated_by_input:
+                await process_incoming_data(node_id, activated_by_input)
+
+            # Check if the node is now ready to execute.
+            if run_context["node_states"][node_id] == "WAITING" and not run_context["waiting_on"][node_id]:
+                await execute_node(node_id)
+
+        async def setup_node_for_execution(node_id, activated_by_input):
+            """Identifies dependencies and prepares a node to receive inputs."""
+            node_instance = run_context["nodes"][node_id]
+            run_context["node_states"][node_id] = "WAITING"
+            await websocket.send_text(f"Preparing: {node_instance.__class__.__name__}")
+            
+            connected_inputs = []
             dependency_tasks = []
-            
+
             for i, (name, socket_def) in enumerate(node_instance.INPUT_SOCKETS.items()):
-                source_info = source_for_target_input.get(f"{node_id}:{i}")
-                if source_info:
-                    source_node_id, source_slot_str = source_info.split(':')
-                    print(f"LOG: Node {node_id} needs input '{name}'. Getting from {source_node_id}.")
-                    dependency_tasks.append(
-                        resolve_dependency(source_node_id, int(source_slot_str), name)
-                    )
+                if f"{node_id}:{i}" in run_context["source_map"]:
+                    connected_inputs.append(name)
+                    
+                    # If this input is a dependency, we need to pull it.
+                    if socket_def.get("is_dependency", False):
+                        # CRITICAL: Don't pull if this is the input that just activated us.
+                        if activated_by_input and activated_by_input['target_input_name'] == name:
+                            print(f"LOG: Node {node_id} was activated by dependency '{name}', not pulling.")
+                            continue
+                        
+                        source_info = run_context["source_map"][f"{node_id}:{i}"]
+                        source_node_id, _ = source_info.split(':')
+                        print(f"LOG: Node {node_id} requires dependency '{name}' from {source_node_id}. Triggering pull.")
+                        task = asyncio.create_task(trigger_node(source_node_id))
+                        dependency_tasks.append(task)
+                        run_context["active_tasks"].add(task)
+
+            # A node is waiting for all its connected inputs.
+            run_context["waiting_on"][node_id] = connected_inputs
+            print(f"LOG: Node {node_id} is now WAITING for inputs: {connected_inputs}")
 
             if dependency_tasks:
-                dependency_results = await asyncio.gather(*dependency_tasks)
-                for dep_result in dependency_results:
-                    kwargs.update(dep_result)
+                await asyncio.gather(*dependency_tasks)
+
+        async def process_incoming_data(node_id, push_data):
+            """Caches incoming data and checks if the node is ready to run."""
+            target_input_name = push_data['target_input_name']
+            value = push_data['value']
             
-            await websocket.send_text(f"Executing: {node_instance.__class__.__name__} (ID: {node_id})")
-            print(f"LOG: All inputs for {node_id} resolved. Calling execute() with args: {kwargs}")
+            print(f"LOG: Node {node_id} received data for input '{target_input_name}'.")
+            run_context["input_cache"][node_id][target_input_name] = value
+            
+            # Remove the input from the waiting list.
+            if target_input_name in run_context["waiting_on"][node_id]:
+                run_context["waiting_on"][node_id].remove(target_input_name)
+            
+            print(f"LOG: Node {node_id} is now waiting for: {run_context['waiting_on'][node_id]}")
+
+        async def execute_node(node_id):
+            """Executes the node's logic and pushes results to downstream nodes."""
+            node_instance = run_context["nodes"][node_id]
+            kwargs = run_context["input_cache"][node_id]
+
+            run_context["node_states"][node_id] = "EXECUTING"
+            await websocket.send_text(f"Executing: {node_instance.__class__.__name__}")
+            print(f"LOG: All inputs for {node_id} resolved. Executing with: {kwargs}")
+
             try:
                 node_outputs = node_instance.execute(**kwargs)
+                run_context["node_states"][node_id] = "DONE"
+                run_context["outputs_cache"][node_id] = node_outputs
                 print(f"LOG: Node {node_id} executed. Outputs: {node_outputs}")
-                
-                # --- Push Phase ---
+
                 if node_outputs:
-                    downstream_tasks = []
-                    for i, output_value in enumerate(node_outputs):
-                        for target_info in targets_for_source_output.get(f"{node_id}:{i}", []):
-                            target_node_id, _ = target_info.split(':')
-                            print(f"LOG: Pushing output from {node_id} to {target_node_id}.")
-                            # This creates a new, independent task for the downstream node.
-                            # The current task does NOT wait for it, preventing deadlock.
-                            downstream_tasks.append(asyncio.create_task(execute_node(target_node_id)))
-                    if downstream_tasks:
-                        # This was the source of the deadlock. We should not wait here.
-                        # The main loop will handle waiting for all tasks to complete.
-                        # await asyncio.gather(*downstream_tasks)
-                        pass
-                
-                return node_outputs
+                    await push_to_downstream(node_id, node_outputs)
             except Exception as e:
                 error_msg = f"Error executing {node_instance.__class__.__name__}: {e}"
                 await websocket.send_text(error_msg)
                 print(f"Execution Error: {error_msg}")
                 import traceback
                 traceback.print_exc()
-                return None
+                run_context["node_states"][node_id] = "ERROR"
 
-        async def resolve_dependency(source_node_id, source_slot_idx, kwarg_name):
-            """Helper to resolve a single dependency and return it as a dict."""
-            source_outputs = await execute_node(source_node_id)
-            if source_outputs and len(source_outputs) > source_slot_idx:
-                return {kwarg_name: source_outputs[source_slot_idx]}
-            return {kwarg_name: None}
+        async def push_to_downstream(source_node_id, outputs):
+            """Pushes output data to all connected downstream nodes."""
+            push_tasks = []
+            for i, value in enumerate(outputs):
+                source_slot_key = f"{source_node_id}:{i}"
+                for target_info in run_context["target_map"].get(source_slot_key, []):
+                    target_node_id, target_slot_str = target_info.split(':')
+                    target_node = run_context["nodes"][target_node_id]
+                    target_input_name = target_node.get_input_name_by_slot(int(target_slot_str))
+                    
+                    print(f"LOG: Pushing data from {source_node_id} to {target_node_id} ('{target_input_name}').")
+                    
+                    push_data = {
+                        "target_input_name": target_input_name,
+                        "value": value
+                    }
+                    task = asyncio.create_task(trigger_node(target_node_id, activated_by_input=push_data))
+                    push_tasks.append(task)
+                    run_context["active_tasks"].add(task)
+            
+            if push_tasks:
+                await asyncio.gather(*push_tasks)
 
-        # --- Kick off the workflow ---
+        # 4. --- Workflow Kick-off ---
         if start_node_id in nodes_map:
-            # We create the main task but don't need to await it here,
-            # as the recursive calls will handle the entire chain.
-            main_task = asyncio.create_task(execute_node(start_node_id))
-            # FIX: Wait for the main task and any spawned tasks to complete.
-            while True:
-                if not active_tasks:
-                    break
-                await asyncio.sleep(0.01)
+            print(f"--- KICKING OFF WORKFLOW FROM START NODE {start_node_id} ---")
+            main_task = asyncio.create_task(trigger_node(start_node_id))
+            run_context["active_tasks"].add(main_task)
+
+            # Wait for all tasks to complete.
+            while run_context["active_tasks"]:
+                done, pending = await asyncio.wait(run_context["active_tasks"], return_when=asyncio.FIRST_COMPLETED)
+                run_context["active_tasks"] = pending
         else:
             await websocket.send_text(f"Error: Start node {start_node_id} not found.")
             return
