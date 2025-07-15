@@ -17,18 +17,27 @@
             box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index: 10;
             display: flex; align-items: center;
         }
-        #run-button {
-            padding: 8px 16px; background-color: #4CAF50; color: white;
+        .top-button {
+            padding: 8px 16px;
             border: none; border-radius: 4px; cursor: pointer; font-weight: bold;
+            margin-right: 10px;
         }
+        #run-button { background-color: #4CAF50; color: white; }
         #run-button:hover { background-color: #45a049; }
+        #save-button { background-color: #008CBA; color: white; }
+        #save-button:hover { background-color: #007B9E; }
+        #load-button { background-color: #f44336; color: white; }
+        #load-button:hover { background-color: #D32F2F; }
+
         #run-button.disabled { background-color: #555; cursor: not-allowed; }
-        #status-log { margin-left: 20px; font-style: italic; color: #aaa; }
+        #status-log { margin-left: 10px; font-style: italic; color: #aaa; }
     </style>
 </head>
 <body>
     <div id="top-bar">
-        <button id="run-button">RUN</button>
+        <button id="run-button" class="top-button">RUN</button>
+        <button id="save-button" class="top-button">Save</button>
+        <button id="load-button" class="top-button">Load</button>
         <div id="status-log">Status: Disconnected</div>
     </div>
     <canvas id='main-canvas'></canvas>
@@ -52,6 +61,9 @@
         (async () => {
             const statusLog = document.getElementById('status-log');
             const runButton = document.getElementById('run-button');
+            const saveButton = document.getElementById('save-button');
+            const loadButton = document.getElementById('load-button');
+
             const log = (message) => {
                 console.log(message);
                 statusLog.textContent = `Status: ${message}`;
@@ -101,7 +113,6 @@
             }
 
             runButton.addEventListener("click", () => {
-                // FIX: Access the public 'selected_nodes' property directly.
                 const selected_nodes_map = canvas.selected_nodes;
                 const selected_ids = Object.keys(selected_nodes_map);
 
@@ -114,7 +125,6 @@
                 if (ws.readyState === WebSocket.OPEN) {
                     log("Sending graph to backend...");
                     const graphData = graph.serialize();
-                    console.log("Sending graph data:", graphData);
                     ws.send(JSON.stringify({
                         action: "run",
                         graph: graphData,
@@ -123,6 +133,57 @@
                 } else {
                     log("Cannot run. WebSocket is not connected.");
                 }
+            });
+
+            saveButton.addEventListener("click", () => {
+                log("Saving workflow...");
+                try {
+                    const data = graph.serialize();
+                    const json = JSON.stringify(data, null, 2);
+                    const blob = new Blob([json], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = "workflow.json";
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    log("Workflow saved.");
+                } catch (e) {
+                    log("Error saving workflow.");
+                    console.error(e);
+                }
+            });
+
+            loadButton.addEventListener("click", () => {
+                const input = document.createElement("input");
+                input.type = "file";
+                input.accept = ".json,application/json";
+                input.onchange = e => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    
+                    log("Loading workflow...");
+                    const reader = new FileReader();
+                    reader.onload = readerEvent => {
+                        try {
+                            const content = readerEvent.target.result;
+                            const data = JSON.parse(content);
+                            graph.configure(data);
+                            log("Workflow loaded successfully.");
+                        } catch (err) {
+                            log("Error loading or parsing workflow file.");
+                            console.error(err);
+                        }
+                    };
+                    reader.onerror = err => {
+                        log("Error reading file.");
+                        console.error(err);
+                    };
+                    reader.readAsText(file);
+                };
+                input.click();
             });
 
             graph.start();
