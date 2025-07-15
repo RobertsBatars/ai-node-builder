@@ -42,22 +42,6 @@
     </div>
     <canvas id='main-canvas'></canvas>
     <script>
-        const WidgetFactory = {
-            create: (nodeInstance, widgetDefinition) => {
-                const { name, type, default: defaultValue, properties } = widgetDefinition;
-                switch (type.toUpperCase()) {
-                    case "TEXT":
-                        nodeInstance.addWidget("text", name, defaultValue || "", val => {});
-                        break;
-                    case "NUMBER":
-                        nodeInstance.addWidget("number", name, defaultValue || 0, val => {}, { min: properties.min, max: properties.max, step: properties.step || 1 });
-                        break;
-                    default:
-                        nodeInstance.addWidget("text", name, `Unsupported: ${type}`, () => {}, { disabled: true });
-                }
-            }
-        };
-
         (async () => {
             const statusLog = document.getElementById('status-log');
             const runButton = document.getElementById('run-button');
@@ -99,11 +83,42 @@
                     function DynamicNode() {
                         blueprint.inputs.forEach(input => this.addInput(input.name, input.type));
                         blueprint.outputs.forEach(output => this.addOutput(output.name, output.type));
-                        blueprint.widgets.forEach(widgetDef => WidgetFactory.create(this, widgetDef));
+
+                        this.serialize_widgets = true;
+                        this.properties = this.properties || {};
+
+                        blueprint.widgets.forEach(widgetDef => {
+                            const { name, type, default: defaultValue, properties: widgetProps } = widgetDef;
+                            
+                            if (this.properties[name] === undefined) {
+                                this.properties[name] = defaultValue;
+                            }
+
+                            // Correctly access the nested properties from the backend
+                            const actualWidgetProperties = widgetProps.properties || {};
+
+                            let liteGraphWidgetType = type.toLowerCase();
+                            if (type.toUpperCase() === "BOOLEAN") {
+                                liteGraphWidgetType = "toggle";
+                            }
+
+                            // Build the options object carefully for each widget type
+                            if (type.toUpperCase() === "COMBO") {
+                                this.addWidget("combo", name, this.properties[name], (value) => {
+                                    this.properties[name] = value;
+                                }, { 
+                                    values: actualWidgetProperties.values || [] 
+                                });
+                            } else {
+                                const options = { ...actualWidgetProperties, property: name };
+                                this.addWidget(liteGraphWidgetType, name, this.properties[name], null, options);
+                            }
+                        });
                     }
+
                     DynamicNode.title = blueprint.name;
                     DynamicNode.category = blueprint.category;
-                    DynamicNode.prototype.serialize_widgets = true;
+                    
                     LiteGraph.registerNodeType(`${blueprint.category}/${blueprint.name}`, DynamicNode);
                 });
                 log("Nodes loaded. Right-click to add nodes.");

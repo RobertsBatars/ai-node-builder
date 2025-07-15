@@ -63,3 +63,28 @@ class DisplayNode(BaseNode):
     def execute(self, value_in=None):
         print(f"--- DISPLAY NODE RECEIVED: {value_in} ---")
         return ()
+
+class WidgetTestNode(BaseNode):
+    CATEGORY = "Test"
+    OUTPUT_SOCKETS = {"output": {"type": SocketType.TEXT}}
+
+    # Test all supported widget types by defining the 'properties' object
+    # with the exact structure that LiteGraph.js expects for its 'options'.
+    text_widget = InputWidget(widget_type="TEXT", default="Test String")
+    number_widget = InputWidget(widget_type="NUMBER", default=42, properties={"min": 0, "max": 100, "step": 1})
+    slider_widget = InputWidget(widget_type="SLIDER", default=5, properties={"min": 0, "max": 10, "step": 0.1})
+    boolean_widget = InputWidget(widget_type="BOOLEAN", default=True)
+    combo_widget = InputWidget(widget_type="COMBO", default="Option 2", properties={"values": ["Option 1", "Option 2", "Option 3"]})
+
+    def load(self):
+        pass
+
+    def execute(self):
+        text_val = self.widget_values.get('text_widget', self.text_widget.default)
+        number_val = self.widget_values.get('number_widget', self.number_widget.default)
+        slider_val = self.widget_values.get('slider_widget', self.slider_widget.default)
+        boolean_val = self.widget_values.get('boolean_widget', self.boolean_widget.default)
+        combo_val = self.widget_values.get('combo_widget', self.combo_widget.default)
+
+        output_string = f"Text: {text_val}, Number: {number_val}, Slider: {slider_val}, Boolean: {boolean_val}, Combo: {combo_val}"
+        return (output_string,)

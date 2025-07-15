@@ -136,11 +136,8 @@ class MathOperationNode(BaseNode):
     OUTPUT_SOCKETS = {"result": {"type": SocketType.NUMBER}}
 
     # --- Widgets ---
-    # We can use a widget to change the node's behavior.
-    # Note: The frontend doesn't have a "DROPDOWN" widget yet, so this will appear
-    # as a text input. The user would have to type "ADD" or "SUBTRACT".
-    # This is a good example of a future improvement.
-    operation = InputWidget(widget_type="TEXT", default="ADD")
+    # Use a COMBO widget to provide a user-friendly dropdown for selecting the operation.
+    operation = InputWidget(widget_type="COMBO", default="ADD", properties={"values": ["ADD", "SUBTRACT", "MULTIPLY", "DIVIDE"]})
 
     def load(self):
         pass
@@ -150,9 +147,17 @@ class MathOperationNode(BaseNode):
 
         op_map = {
             "ADD": operator.add,
-            "SUBTRACT": operator.sub
+            "SUBTRACT": operator.sub,
+            "MULTIPLY": operator.mul,
+            "DIVIDE": operator.truediv
         }
-        op_func = op_map.get(op_str, operator.add) # Default to add
+        op_func = op_map.get(op_str)
+
+        # Handle division by zero and unknown operations
+        if op_func is None:
+            return (float('nan'),)
+        if op_str == "DIVIDE" and float(b) == 0:
+            return (float('inf'),) # Or float('nan') depending on desired behavior
 
         result = op_func(float(a), float(b))
         return (result,)
@@ -162,22 +167,31 @@ class MathOperationNode(BaseNode):
 
 The frontend determines which UI widgets to render based on the `widget_type` string. Here are the currently supported types:
 
-| `widget_type` | Renders as...      | Available `properties` in `InputWidget` |
-|---------------|--------------------|-----------------------------------------|
-| `"TEXT"`      | A text input box.  | (None)                                  |
-| `"NUMBER"`    | A number input box.| `min`, `max`, `step`                    |
+| `widget_type` | Renders as... | Available `properties` in `InputWidget` |
+|---------------|--------------------|-------------------------------------------------|
+| `"TEXT"` | A text input box. | (None) |
+| `"NUMBER"` | A number input box.| `{"min": number, "max": number, "step": number}` |
+| `"SLIDER"` | A horizontal slider. | `{"min": number, "max": number, "step": number}` |
+| `"BOOLEAN"` | A toggle/checkbox. | (None) |
+| `"COMBO"` | A dropdown menu. | `{"values": ["list", "of", "options"]}` |
 
-**Example of using properties:**
+**Examples of using properties:**
 
 ```python
 # A number widget that acts like a slider from 0 to 100 with a step of 5.
-percentage = InputWidget(widget_type="NUMBER", default=50, properties={"min": 0, "max": 100, "step": 5})
+percentage = InputWidget(widget_type="SLIDER", default=50, properties={"min": 0, "max": 100, "step": 5})
+
+# A dropdown menu for selecting a mode.
+mode_selection = InputWidget(widget_type="COMBO", default="Option A", properties={"values": ["Option A", "Option B", "Option C"]})
+
+# A simple on/off switch.
+enable_feature = InputWidget(widget_type="BOOLEAN", default=True)
 ```
 
 ## 5. Best Practices and Considerations
 
--   **Keep Nodes Atomic**: Each node should perform a single, clear task. Instead of one giant node that does three things, create three smaller nodes. This makes your workflows more flexible and easier to debug.
--   **Handle Missing Inputs**: In your `execute` method, consider what should happen if an optional input is not connected. The argument will be `None` in that case.
--   **Return a Tuple**: The `execute` method **must** return a tuple, even if there is only one output. For a single output, return `(my_value,)`. For no outputs, return `()`.
--   **Clear Naming**: Use descriptive names for your node class, sockets, and widgets. This makes the system easier to use for everyone.
--   **Check the Frontend**: Remember that the `widget_type` you specify in the backend must have a corresponding implementation in the `WidgetFactory` in `web/index.html` to render correctly.
+- **Keep Nodes Atomic**: Each node should perform a single, clear task. Instead of one giant node that does three things, create three smaller nodes. This makes your workflows more flexible and easier to debug.
+- **Handle Missing Inputs**: In your `execute` method, consider what should happen if an optional input is not connected. The argument will be `None` in that case.
+- **Return a Tuple**: The `execute` method **must** return a tuple, even if there is only one output. For a single output, return `(my_value,)`. For no outputs, return `()`.
+- **Clear Naming**: Use descriptive names for your node class, sockets, and widgets. This makes the system easier to use for everyone.
+- **Check the Frontend**: Remember that the `widget_type` you specify in the backend must have a corresponding implementation in `web/index.html` to render correctly.
