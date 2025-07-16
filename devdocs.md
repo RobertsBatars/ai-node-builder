@@ -66,7 +66,7 @@ To support nodes that need to process a variable number of inputs (e.g., concate
 *   **Frontend Implementation (`web/index.html`)**:
     *   When a node blueprint contains an input with the property `"array": True`, the frontend doesn't render a static input socket. Instead, it renders a button (e.g., `+ Add Input`).
     *   Clicking this button dynamically adds a new input slot to the node, named with an index suffix (e.g., `my_input_0`, `my_input_1`).
-    *   A corresponding "remove" button is also added for each dynamic input, allowing the user to remove them individually.
+    *   A corresponding "remove" button is also added for each dynamic input array, allowing the user to remove the last added socket from that array.
 
 *   **Backend Engine Implementation (`core/engine.py`)**:
     *   The core of the implementation is in the `execute_node` function within the engine.

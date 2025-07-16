@@ -111,29 +111,36 @@
                         // Part 2: Dynamic Input Logic
                         // ====================================================================
                         const updateRemoveButtons = () => {
-                            // First, remove all existing dynamic remove buttons to avoid duplication
                             this.widgets = (this.widgets || []).filter(w => !w.isRemoveButton);
 
-                            // Then, re-add a "remove" button for each dynamic input
+                            const dynamicArrays = {};
                             if (this.inputs) {
-                                // Iterate backwards when removing items from a list to avoid index shifting issues
-                                for (let i = this.inputs.length - 1; i >= 0; i--) {
-                                    const input = this.inputs[i];
+                                this.inputs.forEach((input, index) => {
                                     const baseName = input.name.substring(0, input.name.lastIndexOf('_'));
                                     const isDynamic = blueprint.inputs.some(inp => inp.name === baseName && inp.array);
-
                                     if (isDynamic) {
-                                        // The widget's name is what's displayed. The options object holds metadata.
-                                        const widget = this.addWidget("button", `- ${input.name}`, "", () => {
-                                            this.removeInput(i);
-                                            // After removing, we must re-run the update to fix indices and buttons
-                                            updateRemoveButtons();
-                                        });
-                                        widget.isRemoveButton = true; // Custom flag to identify these buttons
+                                        if (!dynamicArrays[baseName]) {
+                                            dynamicArrays[baseName] = [];
+                                        }
+                                        dynamicArrays[baseName].push({ index, name: input.name });
                                     }
+                                });
+                            }
+
+                            for (const baseName in dynamicArrays) {
+                                if (dynamicArrays[baseName].length > 0) {
+                                    const widget = this.addWidget("button", `- ${baseName}`, "", () => {
+                                        const inputsToRemove = dynamicArrays[baseName];
+                                        if (inputsToRemove.length > 0) {
+                                            // Sort by index descending to remove from the end
+                                            inputsToRemove.sort((a, b) => b.index - a.index);
+                                            this.removeInput(inputsToRemove[0].index);
+                                            updateRemoveButtons();
+                                        }
+                                    });
+                                    widget.isRemoveButton = true;
                                 }
                             }
-                            // This is important to make litegraph redraw the node and its widgets
                             this.setDirtyCanvas(true, true);
                         };
 
