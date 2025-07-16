@@ -59,6 +59,24 @@ To solve this, the engine was fundamentally rewritten to use a **state-machine m
     *   **Correct Dependency Handling**: The engine now correctly respects the `is_dependency` flag, only pulling data when necessary and avoiding redundant pulls if the data is already being pushed.
     *   **Clarity and Debuggability**: The state machine and verbose logging make the execution flow far easier to trace and debug.
 
+### **3.4. Dynamic Array Sockets: A Flexible Input Model**
+
+To support nodes that need to process a variable number of inputs (e.g., concatenating multiple text streams), the concept of **dynamic array sockets** was introduced. This feature is a collaboration between the frontend and the backend engine.
+
+*   **Frontend Implementation (`web/index.html`)**:
+    *   When a node blueprint contains an input with the property `"array": True`, the frontend doesn't render a static input socket. Instead, it renders a button (e.g., `+ Add Input`).
+    *   Clicking this button dynamically adds a new input slot to the node, named with an index suffix (e.g., `my_input_0`, `my_input_1`).
+    *   A corresponding "remove" button is also added for each dynamic input, allowing the user to remove them individually.
+
+*   **Backend Engine Implementation (`core/engine.py`)**:
+    *   The core of the implementation is in the `execute_node` function within the engine.
+    *   Before calling a node's `execute()` method, the engine inspects all the input data that has been cached for that node.
+    *   It identifies input names that follow the `basename_index` pattern (e.g., `texts_0`, `texts_1`).
+    *   If the `basename` corresponds to an input socket defined with `"array": True`, the engine groups all the values for these inputs into a single list.
+    *   This list, sorted by the index, is then passed as a single argument to the node's `execute()` method.
+
+*   **Example**: If a node has an array input named `texts`, and the user connects three inputs in the UI (which become `texts_0`, `texts_1`, `texts_2`), the `execute` method will be called as `execute(texts=['value_from_0', 'value_from_1', 'value_from_2'])`. This abstracts the complexity from the node developer, who simply receives a list.
+
 ## **4. Node Implementation and Framework (Successful Components)**
 
 ### **4.1. The BaseNode Abstract Class**

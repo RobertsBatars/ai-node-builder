@@ -21,7 +21,7 @@ Sockets are the connection points on a node for data to flow in and out.
 -   **`INPUT_SOCKETS`**: A dictionary defining the inputs of the node.
 -   **`OUTPUT_SOCKETS`**: A dictionary defining the outputs of the node.
 
-Each socket is defined with a name and a dictionary of properties, the most important being `type`, which uses the `SocketType` enum (`TEXT`, `NUMBER`, `IMAGE`, `ANY`).
+Each socket is defined with a name and a dictionary of properties, the most important being `type`, which uses the `SocketType` enum (`TEXT`, `NUMBER`, `IMAGE`, `ANY`). Sockets can also be configured as dynamic arrays to accept a variable number of inputs.
 
 ### Data Flow: Push vs. Pull (Dependency)
 
@@ -163,7 +163,64 @@ class MathOperationNode(BaseNode):
         return (result,)
 ```
 
-## 4. Available Widgets and Properties
+---
+
+## 4. Advanced Sockets: Dynamic Arrays
+
+The engine supports a powerful feature called **dynamic array sockets**. This allows you to create an input that can accept a variable number of connections. In the UI, this appears as a button on the node that lets the user add more input slots of the same type.
+
+### How It Works
+
+When you declare an input socket with `"array": True`, the backend engine and frontend UI treat it differently:
+
+1.  **UI**: Instead of a fixed input socket, the node will display a button (e.g., `+ texts`). Clicking this button adds a new input socket (e.g., `texts_0`, `texts_1`, etc.). Each of these can be connected to an output from another node.
+2.  **Backend**: When the node is executed, the engine gathers all the values from the dynamically added inputs (`texts_0`, `texts_1`, `texts_2`, ...), collects them into a single Python `list`, and passes that list as the argument to your `execute` method.
+
+### Example: A "Concatenate Array" Node
+
+Let's look at the `ConcatenateArrayNode` from `simple_nodes.py`. It takes any number of text inputs and joins them together.
+
+```python
+# nodes/simple_nodes.py
+
+class ConcatenateArrayNode(BaseNode):
+    CATEGORY = "Text"
+    
+    # --- Socket Definition ---
+    # 1. "array": True - This is the key to making the socket a dynamic array.
+    # 2. "is_dependency": True - This ensures that the nodes connected to this 
+    #    array will be called before executing the node as they will not initiate
+    #    the push themselves.
+    INPUT_SOCKETS = {
+        "texts": {"type": SocketType.TEXT, "array": True, "is_dependency": True}
+    }
+    
+    OUTPUT_SOCKETS = {
+        "full_text": {"type": SocketType.TEXT}
+    }
+    
+    separator = InputWidget(widget_type="TEXT", default=", ")
+
+    def load(self):
+        pass
+
+    # --- Execution ---
+    # The 'texts' argument will be a list of strings, not a single value.
+    # The engine handles the grouping and ordering for you.
+    def execute(self, texts):
+        separator_value = self.widget_values.get('separator', self.separator.default)
+        
+        # The core logic is simple: join the list of strings.
+        result = separator_value.join(texts)
+        return (result,)
+```
+
+### Key Takeaways
+
+-   To create a dynamic array input, add `"array": True` to its socket definition in `INPUT_SOCKETS`.
+-   The argument passed to your `execute` method will be a Python `list` containing all the values from the connected inputs, ordered by their index (e.g., `texts_0`, `texts_1`, ...).
+
+## 5. Available Widgets and Properties
 
 The frontend determines which UI widgets to render based on the `widget_type` string. Here are the currently supported types:
 
