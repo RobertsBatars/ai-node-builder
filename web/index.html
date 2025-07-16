@@ -24,18 +24,21 @@
         }
         #run-button { background-color: #4CAF50; color: white; }
         #run-button:hover { background-color: #45a049; }
+        #stop-button { background-color: #f44336; color: white; display: none; }
+        #stop-button:hover { background-color: #D32F2F; }
         #save-button { background-color: #008CBA; color: white; }
         #save-button:hover { background-color: #007B9E; }
         #load-button { background-color: #f44336; color: white; }
         #load-button:hover { background-color: #D32F2F; }
 
-        #run-button.disabled { background-color: #555; cursor: not-allowed; }
+        .top-button.disabled { background-color: #555; cursor: not-allowed; }
         #status-log { margin-left: 10px; font-style: italic; color: #aaa; }
     </style>
 </head>
 <body>
     <div id="top-bar">
         <button id="run-button" class="top-button">RUN</button>
+        <button id="stop-button" class="top-button">STOP</button>
         <button id="save-button" class="top-button">Save</button>
         <button id="load-button" class="top-button">Load</button>
         <div id="status-log">Status: Disconnected</div>
@@ -45,12 +48,29 @@
         (async () => {
             const statusLog = document.getElementById('status-log');
             const runButton = document.getElementById('run-button');
+            const stopButton = document.getElementById('stop-button');
             const saveButton = document.getElementById('save-button');
             const loadButton = document.getElementById('load-button');
 
             const log = (message) => {
                 console.log(message);
+                // Don't overwrite final "stopped" message with "disconnected"
+                if (message.startsWith("Disconnected") && statusLog.textContent.includes("stopped")) {
+                    return;
+                }
                 statusLog.textContent = `Status: ${message}`;
+            };
+
+            const setWorkflowRunningState = (isRunning) => {
+                if (isRunning) {
+                    runButton.classList.add('disabled');
+                    runButton.disabled = true;
+                    stopButton.style.display = 'inline-block';
+                } else {
+                    runButton.classList.remove('disabled');
+                    runButton.disabled = false;
+                    stopButton.style.display = 'none';
+                }
             };
 
             const graph = new LGraph();
@@ -60,11 +80,32 @@
             window.addEventListener('resize', resizeCanvas);
             resizeCanvas();
 
-            const ws = new WebSocket(`ws://${window.location.host}/ws`);
-            ws.onopen = () => log("Connected to backend");
-            ws.onmessage = (event) => log(event.data);
-            ws.onclose = () => log("Disconnected from backend");
-            ws.onerror = () => log("Connection error");
+            let ws;
+            function connectWebSocket() {
+                ws = new WebSocket(`ws://${window.location.host}/ws`);
+                
+                ws.onopen = () => log("Connected to backend");
+                
+                ws.onmessage = (event) => {
+                    log(event.data);
+                    if (event.data.includes("Workflow finished") || event.data.includes("Workflow stopped") || event.data.startsWith("Error:")) {
+                        setWorkflowRunningState(false);
+                    }
+                };
+                
+                ws.onclose = () => {
+                    log("Disconnected from backend");
+                    setWorkflowRunningState(false);
+                    // Optional: try to reconnect
+                    // setTimeout(connectWebSocket, 5000); 
+                };
+
+                ws.onerror = () => {
+                    log("Connection error");
+                    setWorkflowRunningState(false);
+                };
+            }
+            connectWebSocket();
 
             log("Fetching node definitions...");
             try {
@@ -205,6 +246,7 @@
 
                 if (ws.readyState === WebSocket.OPEN) {
                     log("Sending graph to backend...");
+                    setWorkflowRunningState(true);
                     const graphData = graph.serialize();
                     ws.send(JSON.stringify({
                         action: "run",
@@ -216,6 +258,15 @@
                 }
             });
 
+            stopButton.addEventListener("click", () => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    log("Requesting to stop workflow...");
+                    ws.send(JSON.stringify({ action: "stop" }));
+                } else {
+                    log("Cannot stop. WebSocket is not connected.");
+                }
+            });
+            
             saveButton.addEventListener("click", () => {
                 log("Saving workflow...");
                 try {

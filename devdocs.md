@@ -85,6 +85,18 @@ To enable more complex, logic-based workflows (like routing data down different 
 *   **Engine Behavior**: When the `push_to_downstream` function in the engine encounters the `SKIP_OUTPUT` object, it simply ignores that output and does not trigger any downstream nodes connected to it.
 *   **Use Case**: This is essential for creating conditional nodes, such as a "Decision" node that compares two values and routes its input to either a "true" output or a "false" output, but never both at the same time. This prevents unnecessary parts of the graph from being executed.
 
+### **3.6. Asynchronous Execution and Cancellation**
+
+To support long-running tasks (like API calls or timed waits) without freezing the entire engine, and to provide user control over runaway workflows, the engine has two key features: support for asynchronous nodes and a robust cancellation mechanism.
+
+*   **Asynchronous Nodes**: The engine can now execute nodes that have an `async def execute(...)` method. It inspects the node's `execute` method and will `await` it if it's a coroutine. This allows node developers to use `await asyncio.sleep()` for delays, or `await` calls to external APIs, enabling non-blocking I/O operations. The `WaitNode` is a canonical example of this feature.
+
+*   **Workflow Cancellation**: The execution of a workflow is not a blocking call in the main server.
+    1.  **Task Management**: When the user clicks "RUN", the `run_workflow` coroutine is wrapped in an `asyncio.Task` and managed by the server. This frees the WebSocket connection to immediately listen for other messages.
+    2.  **Stop Command**: A "STOP" button in the UI sends a `stop` command to the server.
+    3.  **Cancellation**: The server retrieves the running task associated with the user's session and calls `task.cancel()`.
+    4.  **Graceful Shutdown**: This raises an `asyncio.CancelledError` inside the `run_workflow` function. The engine catches this specific error, cancels all of its own child tasks (the individual `active_tasks` for each node), and sends a final "Workflow stopped" message to the UI. This ensures the workflow is terminated cleanly without leaving orphaned processes.
+
 ## **4. Node Implementation and Framework (Successful Components)**
 
 ### **4.1. The BaseNode Abstract Class**

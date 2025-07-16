@@ -283,10 +283,81 @@ class GateNode(BaseNode):
 ```
 The `DecisionNode` in `conditional_nodes.py` is another great example of this, where it returns the value on one output and `SKIP_OUTPUT` on the other based on the result of a comparison.
 
-## 7. Best Practices and Considerations
+---
+
+## 7. Advanced Feature: Asynchronous Nodes
+
+The engine supports nodes that perform non-blocking operations, such as waiting for a timer or making an external API call. This is achieved by defining the `execute` method as an `async` function.
+
+### How It Works
+
+The engine automatically checks if a node's `execute` method is a coroutine function (defined with `async def`). If it is, the engine will `await` the function, allowing the `asyncio` event loop to manage other tasks while it runs. If it's a regular function (defined with `def`), the engine calls it directly.
+
+This allows you to create nodes that can perform long-running I/O-bound tasks without blocking the entire workflow execution.
+
+### Example: The `WaitNode`
+
+Let's create a node that waits for a specified number of seconds before passing its input through. This is a perfect use case for an `async` node.
+
+```python
+# nodes/utility_nodes.py
+import asyncio
+from core.definitions import BaseNode, SocketType, InputWidget
+
+class WaitNode(BaseNode):
+    CATEGORY = "Utility"
+
+    # This node needs to be triggered. We also mark it as a dependency
+    # in case it's used to delay a branch that another node depends on.
+    INPUT_SOCKETS = {
+        "trigger": {"type": SocketType.ANY, "is_dependency": True}
+    }
+    OUTPUT_SOCKETS = {
+        "output": {"type": SocketType.ANY}
+    }
+
+    # Widget to set the delay time in the UI
+    wait_time_seconds = InputWidget(widget_type="NUMBER", default=5, properties={"min": 0})
+
+    def load(self):
+        pass
+
+    # Note the 'async' keyword here. This is the key to the feature.
+    async def execute(self, trigger):
+        """
+        Waits for the specified duration, then returns the input value.
+        """
+        duration = self.widget_values.get('wait_time_seconds', self.wait_time_seconds.default)
+        
+        try:
+            duration = float(duration)
+        except (ValueError, TypeError):
+            duration = 0 # Default to 0 if input is invalid
+
+        # This is a non-blocking sleep. The engine can run other nodes
+        # while this one is waiting.
+        await asyncio.sleep(duration)
+
+        # Pass the original trigger value to the output
+        return (trigger,)
+```
+
+### Key Takeaways for Async Nodes
+
+-   Define your `execute` method with `async def` if you need to perform non-blocking I/O operations (like `await asyncio.sleep(n)` or `await client.get(...)`).
+-   The rest of the node's structure (`INPUT_SOCKETS`, `OUTPUT_SOCKETS`, `Widgets`, etc.) remains exactly the same.
+-   The engine handles the distinction between `sync` and `async` nodes for you.
+
+---
+
+## 8. Best Practices and Considerations
 
 - **Keep Nodes Atomic**: Each node should perform a single, clear task. Instead of one giant node that does three things, create three smaller nodes. This makes your workflows more flexible and easier to debug.
 - **Handle Missing Inputs**: In your `execute` method, consider what should happen if an optional input is not connected. The argument will be `None` in that case.
 - **Return a Tuple**: The `execute` method **must** return a tuple, even if there is only one output. For a single output, return `(my_value,)`. For no outputs, return `()`. To conditionally prevent an output from firing, return the `SKIP_OUTPUT` object in its place in the tuple.
 - **Clear Naming**: Use descriptive names for your node class, sockets, and widgets. This makes the system easier to use for everyone.
 - **Check the Frontend**: Remember that the `widget_type` you specify in the backend must have a corresponding implementation in `web/index.html` to render correctly.
+
+
+By following this guide, you can extend the AI Node Builder with powerful, custom functionality. Happy building!
+
