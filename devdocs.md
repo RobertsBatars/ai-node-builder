@@ -77,6 +77,14 @@ To support nodes that need to process a variable number of inputs (e.g., concate
 
 *   **Example**: If a node has an array input named `texts`, and the user connects three inputs in the UI (which become `texts_0`, `texts_1`, `texts_2`), the `execute` method will be called as `execute(texts=['value_from_0', 'value_from_1', 'value_from_2'])`. This abstracts the complexity from the node developer, who simply receives a list.
 
+### **3.5. Conditional Execution: Skipping Outputs**
+
+To enable more complex, logic-based workflows (like routing data down different paths), the engine supports the ability for a node to conditionally skip one or more of its outputs.
+
+*   **The `SKIP_OUTPUT` Sentinel**: A special object, `SKIP_OUTPUT`, is defined in `core.definitions`. When a node's `execute` method returns this object in its output tuple for a specific socket, the engine recognizes it as a signal to halt execution for that path.
+*   **Engine Behavior**: When the `push_to_downstream` function in the engine encounters the `SKIP_OUTPUT` object, it simply ignores that output and does not trigger any downstream nodes connected to it.
+*   **Use Case**: This is essential for creating conditional nodes, such as a "Decision" node that compares two values and routes its input to either a "true" output or a "false" output, but never both at the same time. This prevents unnecessary parts of the graph from being executed.
+
 ## **4. Node Implementation and Framework (Successful Components)**
 
 ### **4.1. The BaseNode Abstract Class**

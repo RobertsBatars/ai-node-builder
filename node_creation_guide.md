@@ -245,10 +245,48 @@ mode_selection = InputWidget(widget_type="COMBO", default="Option A", properties
 enable_feature = InputWidget(widget_type="BOOLEAN", default=True)
 ```
 
-## 5. Best Practices and Considerations
+## 6. Advanced Feature: Skipping Outputs for Conditional Logic
+
+For creating nodes that control the flow of the graph (e.g., routing data based on a condition), you can instruct the engine to skip an output. This prevents any downstream nodes connected to that output from executing.
+
+To do this, you import the `SKIP_OUTPUT` object from `core.definitions` and return it in the position of the output you wish to skip in your `execute` method's return tuple.
+
+### Example: A Simple "Gate" Node
+
+Let's imagine a node that only passes a value through if a `boolean` widget is checked.
+
+```python
+# nodes/conditional_nodes.py
+from core.definitions import BaseNode, SocketType, InputWidget, SKIP_OUTPUT
+
+class GateNode(BaseNode):
+    CATEGORY = "Conditional"
+    INPUT_SOCKETS = {"value": {"type": SocketType.ANY}}
+    OUTPUT_SOCKETS = {"output": {"type": SocketType.ANY}}
+
+    is_open = InputWidget(widget_type="BOOLEAN", default=True)
+
+    def load(self):
+        pass
+
+    def execute(self, value):
+        # Get the state of the gate from the widget
+        gate_is_open = self.widget_values.get('is_open', self.is_open.default)
+
+        if gate_is_open:
+            # The gate is open, so pass the value through.
+            return (value,)
+        else:
+            # The gate is closed. Return SKIP_OUTPUT to prevent the
+            # 'output' socket from firing.
+            return (SKIP_OUTPUT,)
+```
+The `DecisionNode` in `conditional_nodes.py` is another great example of this, where it returns the value on one output and `SKIP_OUTPUT` on the other based on the result of a comparison.
+
+## 7. Best Practices and Considerations
 
 - **Keep Nodes Atomic**: Each node should perform a single, clear task. Instead of one giant node that does three things, create three smaller nodes. This makes your workflows more flexible and easier to debug.
 - **Handle Missing Inputs**: In your `execute` method, consider what should happen if an optional input is not connected. The argument will be `None` in that case.
-- **Return a Tuple**: The `execute` method **must** return a tuple, even if there is only one output. For a single output, return `(my_value,)`. For no outputs, return `()`.
+- **Return a Tuple**: The `execute` method **must** return a tuple, even if there is only one output. For a single output, return `(my_value,)`. For no outputs, return `()`. To conditionally prevent an output from firing, return the `SKIP_OUTPUT` object in its place in the tuple.
 - **Clear Naming**: Use descriptive names for your node class, sockets, and widgets. This makes the system easier to use for everyone.
 - **Check the Frontend**: Remember that the `widget_type` you specify in the backend must have a corresponding implementation in `web/index.html` to render correctly.

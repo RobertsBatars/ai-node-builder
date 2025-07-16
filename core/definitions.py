@@ -5,6 +5,9 @@ from abc import ABC, abstractmethod
 from enum import Enum
 import inspect
 
+# A special sentinel object to indicate that an output should be skipped.
+SKIP_OUTPUT = object()
+
 # A global counter to ensure widgets are ordered correctly
 WIDGET_ORDER_COUNTER = 0
 
@@ -22,11 +25,13 @@ class InputWidget:
     """
     A data container class used to declare a UI widget for a node's properties.
     """
-    def __init__(self, widget_type="STRING", default=None, **properties):
+    def __init__(self, widget_type="STRING", default=None, properties=None, **kwargs):
         global WIDGET_ORDER_COUNTER
         self.widget_type = widget_type
         self.default = default
-        self.properties = properties
+        # If 'properties' is passed as a keyword argument, use its value.
+        # Otherwise, assume the remaining kwargs are the properties.
+        self.properties = properties if properties is not None else kwargs
         self.order = WIDGET_ORDER_COUNTER
         WIDGET_ORDER_COUNTER += 1
 

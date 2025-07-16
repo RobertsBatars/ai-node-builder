@@ -8,7 +8,7 @@ import importlib
 import asyncio
 from collections import defaultdict
 
-from core.definitions import BaseNode, InputWidget
+from core.definitions import BaseNode, InputWidget, SKIP_OUTPUT
 
 class NodeEngine:
     def __init__(self):
@@ -123,14 +123,21 @@ class NodeEngine:
                     input_name = input_data['name']
                     waiting_list.append(input_name)
 
-                    # Determine if this input is a dependency
-                    base_name, _, _ = input_name.rpartition('_')
-                    # Handle cases where there is no underscore in the name
-                    if not base_name:
-                        base_name = input_name
+                    # --- Start: Robust Dependency Check ---
+                    # First, try to find the socket by its full name (for non-array inputs like "input_value")
+                    socket_def = node_instance.INPUT_SOCKETS.get(input_name)
                     
-                    socket_def = node_instance.INPUT_SOCKETS.get(base_name)
+                    # If not found, it might be a dynamic array input (e.g., "texts_0")
+                    if not socket_def:
+                        base_name, _, index = input_name.rpartition('_')
+                        if base_name and index.isdigit():
+                            array_socket_def = node_instance.INPUT_SOCKETS.get(base_name)
+                            # Check if the base name corresponds to a valid array socket
+                            if array_socket_def and array_socket_def.get('array', False):
+                                socket_def = array_socket_def
+
                     is_dependency = socket_def and socket_def.get('is_dependency', False)
+                    # --- End: Robust Dependency Check ---
 
                     if is_dependency:
                         if activated_by_input and activated_by_input['target_input_name'] == input_name:
@@ -205,6 +212,8 @@ class NodeEngine:
         async def push_to_downstream(source_node_id, outputs):
             push_tasks = []
             for i, value in enumerate(outputs):
+                if value is SKIP_OUTPUT:
+                    continue  # Skip this output as requested by the node
                 source_key = f"{source_node_id}:{i}"
                 for target_key in run_context["target_map"].get(source_key, []):
                     target_node_id, target_slot_str = target_key.split(':')
