@@ -50,6 +50,30 @@ class AddNode(BaseNode):
         result = float(a) + float(b)
         return (result,)
 
+# --- ARRAY TEST NODE ---
+
+class ConcatenateArrayNode(BaseNode):
+    CATEGORY = "Text"
+    INPUT_SOCKETS = {
+        "texts": {"type": SocketType.TEXT, "array": True, "is_dependency": True}
+    }
+    OUTPUT_SOCKETS = {
+        "full_text": {"type": SocketType.TEXT}
+    }
+    separator = InputWidget(widget_type="TEXT", default=", ")
+
+    def load(self):
+        """
+        Required by the BaseNode.
+        """
+        pass
+
+    def execute(self, texts):
+        separator_value = self.widget_values.get('separator', self.separator.default)
+        # 'texts' will be a list of strings
+        result = separator_value.join(texts)
+        return (result,)
+
 # --- OUTPUT NODE ---
 
 class DisplayNode(BaseNode):

@@ -81,39 +81,98 @@
 
                 nodeBlueprints.forEach(blueprint => {
                     function DynamicNode() {
-                        blueprint.inputs.forEach(input => this.addInput(input.name, input.type));
+                        // ====================================================================
+                        // Part 1: Standard Setup (Outputs, Widgets, Properties)
+                        // ====================================================================
                         blueprint.outputs.forEach(output => this.addOutput(output.name, output.type));
-
                         this.serialize_widgets = true;
                         this.properties = this.properties || {};
 
                         blueprint.widgets.forEach(widgetDef => {
                             const { name, type, default: defaultValue, properties: widgetProps } = widgetDef;
-                            
                             if (this.properties[name] === undefined) {
                                 this.properties[name] = defaultValue;
                             }
-
-                            // Correctly access the nested properties from the backend
-                            const actualWidgetProperties = widgetProps.properties || {};
-
+                            const actualWidgetProperties = widgetProps || {};
                             let liteGraphWidgetType = type.toLowerCase();
-                            if (type.toUpperCase() === "BOOLEAN") {
-                                liteGraphWidgetType = "toggle";
-                            }
+                            if (type.toUpperCase() === "BOOLEAN") liteGraphWidgetType = "toggle";
 
-                            // Build the options object carefully for each widget type
                             if (type.toUpperCase() === "COMBO") {
                                 this.addWidget("combo", name, this.properties[name], (value) => {
                                     this.properties[name] = value;
-                                }, { 
-                                    values: actualWidgetProperties.values || [] 
-                                });
+                                }, { values: actualWidgetProperties.values || [] });
                             } else {
                                 const options = { ...actualWidgetProperties, property: name };
                                 this.addWidget(liteGraphWidgetType, name, this.properties[name], null, options);
                             }
                         });
+
+                        // ====================================================================
+                        // Part 2: Dynamic Input Logic
+                        // ====================================================================
+                        const updateRemoveButtons = () => {
+                            // First, remove all existing dynamic remove buttons to avoid duplication
+                            this.widgets = (this.widgets || []).filter(w => !w.isRemoveButton);
+
+                            // Then, re-add a "remove" button for each dynamic input
+                            if (this.inputs) {
+                                // Iterate backwards when removing items from a list to avoid index shifting issues
+                                for (let i = this.inputs.length - 1; i >= 0; i--) {
+                                    const input = this.inputs[i];
+                                    const baseName = input.name.substring(0, input.name.lastIndexOf('_'));
+                                    const isDynamic = blueprint.inputs.some(inp => inp.name === baseName && inp.array);
+
+                                    if (isDynamic) {
+                                        // The widget's name is what's displayed. The options object holds metadata.
+                                        const widget = this.addWidget("button", `- ${input.name}`, "", () => {
+                                            this.removeInput(i);
+                                            // After removing, we must re-run the update to fix indices and buttons
+                                            updateRemoveButtons();
+                                        });
+                                        widget.isRemoveButton = true; // Custom flag to identify these buttons
+                                    }
+                                }
+                            }
+                            // This is important to make litegraph redraw the node and its widgets
+                            this.setDirtyCanvas(true, true);
+                        };
+
+                        const addDynamicInput = (name, type) => {
+                            const existingInputs = this.inputs ? this.inputs.filter(inp => inp.name.startsWith(name + "_")) : [];
+                            let newIndex = 0;
+                            const existingIndices = new Set(existingInputs.map(inp => parseInt(inp.name.split('_').pop())));
+                            while (existingIndices.has(newIndex)) {
+                                newIndex++;
+                            }
+                            const newName = `${name}_${newIndex}`;
+                            this.addInput(newName, type);
+                            updateRemoveButtons(); // Update buttons after adding
+                        };
+
+                        // Process inputs from blueprint
+                        blueprint.inputs.forEach(inputDef => {
+                            if (inputDef.array) {
+                                // For array inputs, add a button to add more
+                                this.addWidget("button", `+ ${inputDef.name}`, "", () => {
+                                    addDynamicInput(inputDef.name, inputDef.type);
+                                });
+                            } else {
+                                // For regular inputs, add them directly
+                                this.addInput(inputDef.name, inputDef.type);
+                            }
+                        });
+
+                        // ====================================================================
+                        // Part 3: Lifecycle Hooks
+                        // ====================================================================
+                        // This ensures that when a graph is loaded from a file, the remove buttons
+                        // for any existing dynamic inputs are created correctly.
+                        this.onAdded = function() {
+                            // Use a timeout to ensure the node has been fully configured from the loaded data
+                            setTimeout(() => {
+                                updateRemoveButtons();
+                            }, 10);
+                        };
                     }
 
                     DynamicNode.title = blueprint.name;
