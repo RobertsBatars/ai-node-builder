@@ -271,7 +271,15 @@
             saveButton.addEventListener("click", () => {
                 log("Saving workflow...");
                 try {
-                    const data = graph.serialize();
+                    const selected_nodes_map = canvas.selected_nodes;
+                    const selected_ids = Object.keys(selected_nodes_map);
+                    const start_node_id = selected_ids.length > 0 ? selected_ids[0] : null;
+
+                    const data = {
+                        graph_data: graph.serialize(),
+                        start_node_id: start_node_id
+                    };
+
                     const json = JSON.stringify(data, null, 2);
                     const blob = new Blob([json], { type: "application/json" });
                     const url = URL.createObjectURL(blob);
@@ -303,7 +311,28 @@
                         try {
                             const content = readerEvent.target.result;
                             const data = JSON.parse(content);
-                            graph.configure(data);
+
+                            let graphData;
+                            let startNodeId = null;
+
+                            // Backwards compatibility check
+                            if (data.graph_data && data.hasOwnProperty('start_node_id')) {
+                                graphData = data.graph_data;
+                                startNodeId = data.start_node_id;
+                            } else {
+                                // Assume old format
+                                graphData = data;
+                            }
+
+                            graph.configure(graphData);
+
+                            if (startNodeId) {
+                                const nodeToSelect = graph.getNodeById(startNodeId);
+                                if (nodeToSelect) {
+                                    canvas.selectNode(nodeToSelect);
+                                }
+                            }
+
                             log("Workflow loaded successfully.");
                         } catch (err) {
                             log("Error loading or parsing workflow file.");
