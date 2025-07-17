@@ -48,18 +48,28 @@ To solve this, the engine was fundamentally rewritten to use a **state-machine m
     *   A set of all active `asyncio` tasks.
 
 *   **How it Works (The New Flow)**:
-    1.  **Triggering**: When a node is triggered (either by the user or an upstream node), the engine first checks its state in the `run_context`.
-    2.  **Setup (`PENDING` -> `WAITING`)**: If it's the first time the node is triggered, it's moved to the `WAITING` state. The engine identifies all its connected inputs and determines which ones are "pull" dependencies (marked with `is_dependency: True` in the node's definition). It then recursively triggers those dependency nodes.
-    3.  **Input Processing**: When an upstream node pushes data, the engine finds the waiting downstream node, stores the data in its `input_cache`, and removes that input from the node's "waiting list."
-    4.  **Execution (`WAITING` -> `EXECUTING`)**: After processing incoming data, the engine checks if the node's "waiting list" is empty. If it is, the node is moved to the `EXECUTING` state, and its `execute()` method is called with the fully assembled input data.
-    5.  **Completion (`EXECUTING` -> `DONE`)**: Once execution is finished, the node is marked as `DONE`, and its results are pushed to all downstream nodes, triggering the process anew.
+    1.  **Triggering**: When a node is triggered (either by the user or an upstream node), the engine first checks its state in the `run_context`. A single trigger event can now carry data for multiple input sockets simultaneously.
+    2.  **Resetting Completed Nodes**: If a node is in the `DONE` state and is re-triggered, the engine will reset it. Crucially, it only clears the cached values for its *standard* inputs, preserving any dependency or pull-style inputs. This allows a completed part of a graph to be re-run with new data without forcing a full recalculation of its static dependencies.
+    3.  **Setup (`PENDING` -> `WAITING`)**: If it's the first time the node is triggered, it's moved to the `WAITING` state. The engine identifies all its connected inputs and determines which ones are "pull" dependencies (marked with `is_dependency: True` in the node's definition). It then recursively triggers those dependency nodes.
+    4.  **Input Processing**: When an upstream node pushes data, the engine finds the waiting downstream node, stores the data in its `input_cache`, and removes that input from the node's "waiting list." The engine efficiently processes a batch of incoming data points in a single operation.
+    5.  **Execution (`WAITING` -> `EXECUTING`)**: After processing incoming data, the engine checks if the node's "waiting list" is empty. If it is, the node is moved to the `EXECUTING` state, and its `execute()` method is called with the fully assembled input data.
+    6.  **Completion (`EXECUTING` -> `DONE`)**: Once execution is finished, the node is marked as `DONE`, and its results are pushed to all downstream nodes, triggering the process anew.
 
 *   **Key Benefits of the New Model**:
     *   **No Deadlocks**: A node is only executed once all its required inputs are explicitly resolved and cached. The "pull" and "push" actions are now decoupled, preventing circular waits.
     *   **Correct Dependency Handling**: The engine now correctly respects the `is_dependency` flag, only pulling data when necessary and avoiding redundant pulls if the data is already being pushed.
     *   **Clarity and Debuggability**: The state machine and verbose logging make the execution flow far easier to trace and debug.
+    *   **Reliable Re-execution**: The intelligent reset logic ensures that re-running parts of the graph is efficient and predictable.
 
-### **3.4. Dynamic Array Sockets: A Flexible Input Model**
+### **3.4. Grouped Downstream Pushes for Reliability**
+
+A key improvement to the engine is how it handles the "push" part of the cycle. When a node finishes execution and produces multiple outputs, instead of creating separate, independent trigger tasks for each downstream node, the engine now groups these actions.
+
+*   **The Problem (Race Conditions)**: In a scenario where a single upstream node connects to the *same* downstream node on multiple inputs, firing independent triggers could create a race condition. The downstream node might be triggered, execute, and reset multiple times in an unpredictable order.
+*   **The Solution (Grouped Pushes)**: The `push_to_downstream` function now gathers all the data packets and groups them by their `target_node_id`. It then creates a single `trigger_node` task for each unique downstream node, passing all the relevant data in a single batch.
+*   **Benefit**: This ensures that a downstream node receives all of its inputs from a single upstream execution cycle at once. This makes the execution more reliable, predictable, and efficient, completely avoiding the race condition scenario.
+
+### **3.5. Dynamic Array Sockets: A Flexible Input Model**
 
 To support nodes that need to process a variable number of inputs (e.g., concatenating multiple text streams), the concept of **dynamic array sockets** was introduced. This feature is a collaboration between the frontend and the backend engine.
 

@@ -90,16 +90,44 @@ class NodeEngine:
         # 3. --- Main Execution Block ---
         try:
             # ... (All the inner function definitions like trigger_node, execute_node, etc. go here)
-            async def trigger_node(node_id, activated_by_input=None):
+            async def trigger_node(node_id, activated_by_inputs=None):
                 node_state = run_context["node_states"][node_id]
-                if node_state in ["EXECUTING", "DONE"]:
+
+                if node_state == "EXECUTING":
                     return
 
+                if node_state == "DONE":
+                    node_instance = run_context["nodes"][node_id]
+                    # A node should only be reset if it has at least one standard (non-dependency) input.
+                    has_standard_inputs = any(not props.get('is_dependency', False) for props in node_instance.INPUT_SOCKETS.values())
+
+                    if not has_standard_inputs:
+                        return # Do not reset pull-only nodes.
+
+                    print(f"LOG: Resetting completed node {node_id} for re-trigger.")
+                    run_context["node_states"][node_id] = "PENDING"
+                    node_state = "PENDING"
+                    
+                    cache = run_context["input_cache"][node_id]
+                    standard_input_names = {name for name, props in node_instance.INPUT_SOCKETS.items() if not props.get('is_dependency', False)}
+                    
+                    keys_to_delete = []
+                    for key in cache.keys():
+                        base_name, _, _ = key.rpartition('_')
+                        if key in standard_input_names or base_name in standard_input_names:
+                            keys_to_delete.append(key)
+                    
+                    for key in keys_to_delete:
+                        del cache[key]
+                    
+                    print(f"LOG: Cleared standard inputs for {node_id}. Cache is now: {cache}")
+
                 if node_state == "PENDING":
-                    await setup_node_for_execution(node_id, graph_data, activated_by_input)
+                    first_input = activated_by_inputs[0] if activated_by_inputs else None
+                    await setup_node_for_execution(node_id, graph_data, first_input)
                 
-                if activated_by_input:
-                    await process_incoming_data(node_id, activated_by_input)
+                if activated_by_inputs:
+                    await process_incoming_data(node_id, activated_by_inputs)
 
                 if run_context["node_states"][node_id] == "WAITING" and not run_context["waiting_on"][node_id]:
                     await execute_node(node_id)
@@ -139,12 +167,13 @@ class NodeEngine:
                 print(f"LOG: Node {node_id} is WAITING for: {waiting_list}")
                 if dependency_tasks: await asyncio.gather(*dependency_tasks)
 
-            async def process_incoming_data(node_id, push_data):
-                target_input_name = push_data['target_input_name']
-                value = push_data['value']
-                run_context["input_cache"][node_id][target_input_name] = value
-                if target_input_name in run_context["waiting_on"][node_id]:
-                    run_context["waiting_on"][node_id].remove(target_input_name)
+            async def process_incoming_data(node_id, push_datas):
+                for push_data in push_datas:
+                    target_input_name = push_data['target_input_name']
+                    value = push_data['value']
+                    run_context["input_cache"][node_id][target_input_name] = value
+                    if target_input_name in run_context["waiting_on"][node_id]:
+                        run_context["waiting_on"][node_id].remove(target_input_name)
                 print(f"LOG: Node {node_id} waiting for: {run_context['waiting_on'][node_id]}")
 
             async def execute_node(node_id):
@@ -184,7 +213,8 @@ class NodeEngine:
                     run_context["node_states"][node_id] = "ERROR"
 
             async def push_to_downstream(source_node_id, outputs):
-                push_tasks = []
+                # Group all pushes by the target node ID to avoid race conditions
+                pushes_by_node = defaultdict(list)
                 for i, value in enumerate(outputs):
                     if value is SKIP_OUTPUT: continue
                     source_key = f"{source_node_id}:{i}"
@@ -194,9 +224,15 @@ class NodeEngine:
                         target_input_info = target_node_data['inputs'][int(target_slot_str)]
                         target_input_name = target_input_info['name']
                         push_data = {"target_input_name": target_input_name, "value": value}
-                        task = asyncio.create_task(trigger_node(target_node_id, activated_by_input=push_data))
-                        push_tasks.append(task)
-                        run_context["active_tasks"].add(task)
+                        pushes_by_node[target_node_id].append(push_data)
+
+                # Create a single trigger task for each downstream node
+                push_tasks = []
+                for target_node_id, push_datas in pushes_by_node.items():
+                    task = asyncio.create_task(trigger_node(target_node_id, activated_by_inputs=push_datas))
+                    push_tasks.append(task)
+                    run_context["active_tasks"].add(task)
+                
                 if push_tasks: await asyncio.gather(*push_tasks)
 
             # --- Workflow Kick-off ---
