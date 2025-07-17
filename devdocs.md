@@ -43,20 +43,24 @@ To solve this, the engine was fundamentally rewritten to use a **state-machine m
 *   **The `run_context` Object**: A central `run_context` dictionary is now created for each workflow. It acts as the "single source of truth," tracking:
     *   The state of every node.
     *   A cache for input data as it arrives.
+    *   A `node_memory` dictionary, allowing nodes to store and retrieve state that persists across multiple executions within the same workflow run.
+    *   A `node_wait_configs` dictionary, which stores the list of inputs each node is currently waiting for. This can be changed dynamically by the node itself to create loops.
     *   A list of inputs that each node is still waiting for.
     *   A cache for node output results.
     *   A set of all active `asyncio` tasks.
 
 *   **How it Works (The New Flow)**:
     1.  **Triggering**: When a node is triggered (either by the user or an upstream node), the engine first checks its state in the `run_context`. A single trigger event can now carry data for multiple input sockets simultaneously.
-    2.  **Resetting Completed Nodes**: If a node is in the `DONE` state and is re-triggered, the engine will reset it. Crucially, it only clears the cached values for its *standard* inputs, preserving any dependency or pull-style inputs. This allows a completed part of a graph to be re-run with new data without forcing a full recalculation of its static dependencies.
-    3.  **Setup (`PENDING` -> `WAITING`)**: If it's the first time the node is triggered, it's moved to the `WAITING` state. The engine identifies all its connected inputs and determines which ones are "pull" dependencies (marked with `is_dependency: True` in the node's definition). It then recursively triggers those dependency nodes.
-    4.  **Input Processing**: When an upstream node pushes data, the engine finds the waiting downstream node, stores the data in its `input_cache`, and removes that input from the node's "waiting list." The engine efficiently processes a batch of incoming data points in a single operation.
-    5.  **Execution (`WAITING` -> `EXECUTING`)**: After processing incoming data, the engine checks if the node's "waiting list" is empty. If it is, the node is moved to the `EXECUTING` state, and its `execute()` method is called with the fully assembled input data.
-    6.  **Completion (`EXECUTING` -> `DONE`)**: Once execution is finished, the node is marked as `DONE`, and its results are pushed to all downstream nodes, triggering the process anew.
+    2.  **Resetting Completed Nodes**: If a node is in the `DONE` state and is re-triggered, the engine will reset it. It repopulates its list of inputs to wait for based on its current (and potentially dynamic) wait configuration. It then clears the cache for only those specific inputs.
+    3.  **Setup (`PENDING` -> `WAITING`)**: If it's the first time the node is triggered, it's moved to the `WAITING` state. The engine inspects the node's static definition to determine its initial wait list, respecting flags like `do_not_wait: True`. It also recursively triggers any "pull" dependencies.
+    4.  **Input Processing**: When an upstream node pushes data, the engine finds the waiting downstream node, stores the data in its `input_cache`, and removes that input from the node's "waiting list."
+    5.  **Execution (`WAITING` -> `EXECUTING`)**: After processing incoming data, the engine checks if the node's "waiting list" is empty. If it is, the node is moved to the `EXECUTING` state, and its `execute()` method is called.
+    6.  **State Update & Completion (`EXECUTING` -> `DONE`)**: After execution, the engine checks if the node returned a special `NodeStateUpdate` object. If so, it updates that node's wait configuration for all future executions. Finally, the node is marked as `DONE`, and its results are pushed downstream.
 
 *   **Key Benefits of the New Model**:
     *   **No Deadlocks**: A node is only executed once all its required inputs are explicitly resolved and cached. The "pull" and "push" actions are now decoupled, preventing circular waits.
+    *   **Stateful Execution**: The `node_memory` cache allows nodes to be stateful within a single workflow, remembering information from previous executions.
+    *   **Dynamic Looping**: By allowing nodes to dynamically change which inputs they wait for, the engine can now support complex, stateful loops.
     *   **Correct Dependency Handling**: The engine now correctly respects the `is_dependency` flag, only pulling data when necessary and avoiding redundant pulls if the data is already being pushed.
     *   **Clarity and Debuggability**: The state machine and verbose logging make the execution flow far easier to trace and debug.
     *   **Reliable Re-execution**: The intelligent reset logic ensures that re-running parts of the graph is efficient and predictable.

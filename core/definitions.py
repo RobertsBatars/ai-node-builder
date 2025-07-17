@@ -35,6 +35,20 @@ class InputWidget:
         self.order = WIDGET_ORDER_COUNTER
         WIDGET_ORDER_COUNTER += 1
 
+class NodeStateUpdate:
+    """
+    A data container used by nodes to request changes to their own state for subsequent executions.
+    This is the mechanism for creating dynamic behavior, such as loops.
+    """
+    def __init__(self, wait_for_inputs=None):
+        """
+        Args:
+            wait_for_inputs (list[str], optional): A list of input socket names that the node
+                                                   should wait for in the next execution cycle.
+                                                   If None, the wait configuration is not changed.
+        """
+        self.wait_for_inputs = wait_for_inputs
+
 
 class BaseNode(ABC):
     """
@@ -45,9 +59,10 @@ class BaseNode(ABC):
     INPUT_SOCKETS = {}
     OUTPUT_SOCKETS = {}
 
-    def __init__(self, engine, node_info):
+    def __init__(self, engine, node_info, memory):
         self.engine = engine
         self.node_info = node_info
+        self.memory = memory
         
         self.widget_values = {}
         if 'widgets_values' in self.node_info and self.node_info['widgets_values'] is not None:
@@ -71,5 +86,14 @@ class BaseNode(ABC):
 
     @abstractmethod
     def execute(self, *args, **kwargs):
-        """Perform the node's main work."""
+        """
+        Perform the node's main work.
+
+        This method can return one of two things:
+        1. A tuple of output values, e.g., (value_for_output_1, value_for_output_2)
+        2. A tuple containing two elements:
+           - The tuple of output values.
+           - A NodeStateUpdate object to dynamically change the node's behavior.
+           e.g., ((value_for_output_1,), NodeStateUpdate(wait_for_inputs=['new_input']))
+        """
         pass

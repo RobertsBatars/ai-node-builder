@@ -14,6 +14,20 @@ Every node in the application is a Python class that inherits from `core.definit
 
 The engine automatically discovers any class that inherits from `BaseNode` located in any file within the `nodes/` directory. You simply need to create a new Python file (e.g., `my_custom_nodes.py`) inside the `nodes/` directory and define your node classes there. The engine will handle the rest.
 
+### Node Memory: The `self.memory` Attribute
+
+Each node instance has a `self.memory` attribute, which is a Python dictionary. This memory is unique to that specific node within a single workflow run. It is created when the workflow starts and destroyed when it finishes.
+
+You can use `self.memory` to store any information you want to persist across multiple executions of the same node. This is the key to creating stateful nodes, such as counters or accumulators.
+
+```python
+# Inside your execute method:
+# Get a value from memory, defaulting to 0 if it's not there.
+current_count = self.memory.get('count', 0)
+# Store an updated value back into memory.
+self.memory['count'] = current_count + 1
+```
+
 ### Sockets: Inputs and Outputs
 
 Sockets are the connection points on a node for data to flow in and out.
@@ -38,6 +52,14 @@ The engine supports two models for how a node receives data. Understanding this 
     -   When your node requires multiple inputs to be present *at the same time* before it can run, and those inputs come from separate, independent branches of the graph. The `AddNode` is a perfect example: it cannot execute with just one number, so it pulls both inputs to ensure they are ready simultaneously.
 
     In short: if the data won't be "pushed" to your node as part of the normal flow, you need to "pull" it.
+
+3.  **Do Not Wait (For Loops)**: This is the key to creating loops and dynamic behavior. You mark an input socket with `"do_not_wait": True`. This tells the engine: "Do not wait for this input. Execute me as soon as my other, standard inputs are ready. If data arrives at this input, it can trigger an execution by itself." This is perfect for a "loop in" or "update" signal.
+
+#### Handling Conflicting Flags
+
+What happens if you set both `is_dependency: True` and `do_not_wait: True` on the same input?
+
+**`do_not_wait` always wins.** The engine will ignore the `is_dependency` flag. The input will not be pulled, and the engine will not wait for it. This ensures that the looping behavior is predictable.
 
 ### Widgets
 
@@ -339,7 +361,7 @@ class WaitNode(BaseNode):
         try:
             duration = float(duration)
         except (ValueError, TypeError):
-            duration = 0 # Default to 0 if input is invalid
+            duration = 0 # Default to 0 if invalid
 
         # This is a non-blocking sleep. The engine can run other nodes
         # while this one is waiting.
@@ -357,14 +379,79 @@ class WaitNode(BaseNode):
 
 ---
 
-## 8. Best Practices and Considerations
+## 8. Advanced Feature: Creating Loops with State
+
+To create loops, you need to combine three features:
+1.  **`self.memory`**: To store the state of the loop between executions.
+2.  **`"do_not_wait": True`**: On an input to act as the loop trigger.
+3.  **`NodeStateUpdate`**: A special object you can return from `execute` to change which inputs the node waits for in the *next* execution.
+
+### The `execute` Method's Return Value
+
+Your `execute` method can now return two different things:
+1.  **Just outputs**: `return (output_value,)`
+2.  **Outputs and a state update**: `return ((output_value,), NodeStateUpdate(wait_for_inputs=['new_input_to_wait_for']))`
+
+### Example: A Looping Accumulator
+
+Let's create a node that takes an initial number, and then adds to it every time a second input is triggered.
+
+```python
+# in a file like nodes/custom_nodes.py
+from core.definitions import BaseNode, SocketType, NodeStateUpdate
+
+class LoopingAccumulatorNode(BaseNode):
+    CATEGORY = "Test"
+    INPUT_SOCKETS = {
+        "initial_value": {"type": SocketType.NUMBER},
+        # This input will not be waited for initially. It will trigger subsequent executions.
+        "add_value": {"type": SocketType.NUMBER, "do_not_wait": True}
+    }
+    OUTPUT_SOCKETS = { "result": {"type": SocketType.NUMBER} }
+
+    def load(self):
+        # Best practice to initialize memory in load()
+        self.memory['total'] = 0
+        self.memory['is_initialized'] = False
+
+    def execute(self, initial_value=None, add_value=None):
+        if not self.memory['is_initialized']:
+            # FIRST RUN: Triggered by 'initial_value'.
+            if initial_value is None: return (0,) # Should not happen
+            
+            total = float(initial_value)
+            self.memory['total'] = total
+            self.memory['is_initialized'] = True
+            
+            # Create the state update object.
+            # Tell the engine to ONLY wait for 'add_value' from now on.
+            state_update = NodeStateUpdate(wait_for_inputs=['add_value'])
+            
+            # Return the output tuple AND the state update object.
+            return ((total,), state_update)
+        else:
+            # SUBSEQUENT RUNS: Triggered by 'add_value'.
+            if add_value is None: return (self.memory['total'],)
+
+            total = self.memory['total'] + float(add_value)
+            self.memory['total'] = total
+            
+            # No state update needed, the configuration is already correct.
+            return (total,)
+```
+
+---
+
+## 9. Best Practices and Considerations
 
 - **Keep Nodes Atomic**: Each node should perform a single, clear task. Instead of one giant node that does three things, create three smaller nodes. This makes your workflows more flexible and easier to debug.
+- **Initialize Memory**: When using stateful nodes, it is best practice to initialize all expected keys for `self.memory` in the `load()` method. This prevents potential `KeyError` exceptions and makes the node's expected state clear.
 - **Handle Missing Inputs**: In your `execute` method, consider what should happen if an optional input is not connected. The argument will be `None` in that case.
-- **Return a Tuple**: The `execute` method **must** return a tuple, even if there is only one output. For a single output, return `(my_value,)`. For no outputs, return `()`. To conditionally prevent an output from firing, return the `SKIP_OUTPUT` object in its place in the tuple.
+- **Return a Tuple**: The `execute` method **must** return a tuple for its outputs, even if there is only one. For a single output, return `(my_value,)`. For no outputs, return `()`. To conditionally prevent an output from firing, return the `SKIP_OUTPUT` object in its place in the tuple.
 - **Clear Naming**: Use descriptive names for your node class, sockets, and widgets. This makes the system easier to use for everyone.
 - **Check the Frontend**: Remember that the `widget_type` you specify in the backend must have a corresponding implementation in `web/index.html` to render correctly.
 
 
 By following this guide, you can extend the AI Node Builder with powerful, custom functionality. Happy building!
+
 

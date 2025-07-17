@@ -8,7 +8,7 @@ import importlib
 import asyncio
 from collections import defaultdict
 
-from core.definitions import BaseNode, InputWidget, SKIP_OUTPUT
+from core.definitions import BaseNode, InputWidget, SKIP_OUTPUT, NodeStateUpdate
 
 class NodeEngine:
     def __init__(self):
@@ -65,8 +65,9 @@ class NodeEngine:
         print("\n--- NEW WORKFLOW RUN ---")
 
         # 1. --- Initialization ---
+        node_memory = defaultdict(dict)
         nodes_map = {
-            str(n['id']): self.node_classes[n['type'].split('/')[-1]](self, n)
+            str(n['id']): self.node_classes[n['type'].split('/')[-1]](self, n, node_memory[str(n['id'])])
             for n in graph_data['nodes'] if n['type'].split('/')[-1] in self.node_classes
         }
         for node in nodes_map.values():
@@ -79,7 +80,9 @@ class NodeEngine:
             "node_states": defaultdict(lambda: "PENDING"),
             "input_cache": defaultdict(dict), "waiting_on": defaultdict(list),
             "outputs_cache": {}, "active_tasks": set(),
-            "source_map": {}, "target_map": defaultdict(list)
+            "source_map": {}, "target_map": defaultdict(list),
+            "node_memory": node_memory,
+            "node_wait_configs": defaultdict(list)
         }
         for link_data in graph_data['links']:
             _, source_id, source_slot, target_id, target_slot, _ = link_data
@@ -101,29 +104,23 @@ class NodeEngine:
 
                 if node_state == "DONE":
                     node_instance = run_context["nodes"][node_id]
-                    # A node should only be reset if it has at least one standard (non-dependency) input.
-                    has_standard_inputs = any(not props.get('is_dependency', False) for props in node_instance.INPUT_SOCKETS.values())
-
-                    if not has_standard_inputs:
-                        return # Do not reset pull-only nodes.
-
+                    
                     print(f"LOG: Resetting completed node {node_id} for re-trigger.")
                     run_context["node_states"][node_id] = "PENDING"
                     node_state = "PENDING"
                     
+                    # Use the (potentially dynamic) wait config for the reset
+                    wait_config = run_context["node_wait_configs"][node_id]
+                    run_context["waiting_on"][node_id] = list(wait_config)
+
+                    # Clear only the inputs that the node is now waiting for.
                     cache = run_context["input_cache"][node_id]
-                    standard_input_names = {name for name, props in node_instance.INPUT_SOCKETS.items() if not props.get('is_dependency', False)}
-                    
-                    keys_to_delete = []
-                    for key in cache.keys():
-                        base_name, _, _ = key.rpartition('_')
-                        if key in standard_input_names or base_name in standard_input_names:
-                            keys_to_delete.append(key)
-                    
+                    keys_to_delete = [key for key in cache if key in wait_config]
                     for key in keys_to_delete:
                         del cache[key]
                     
-                    print(f"LOG: Cleared standard inputs for {node_id}. Cache is now: {cache}")
+                    print(f"LOG: Cleared waiting inputs for {node_id}. Waiting for: {run_context['waiting_on'][node_id]}")
+
 
                 if node_state == "PENDING":
                     first_input = activated_by_inputs[0] if activated_by_inputs else None
@@ -136,38 +133,59 @@ class NodeEngine:
                     await execute_node(node_id)
 
             async def setup_node_for_execution(node_id, graph_data, activated_by_input):
+                # This function now only runs if the node's wait config has NOT been set.
+                # For re-triggered nodes, the config is already set by the reset logic in trigger_node.
+                if node_id in run_context["node_wait_configs"]:
+                    run_context["node_states"][node_id] = "WAITING"
+                    # Potentially trigger dependencies if they haven't been resolved,
+                    # though in a loop this is less common.
+                    return
+
                 node_instance = run_context["nodes"][node_id]
                 run_context["node_states"][node_id] = "WAITING"
                 await websocket.send_text(f"Preparing: {node_instance.__class__.__name__}")
 
                 node_data = next((n for n in graph_data['nodes'] if str(n['id']) == node_id), None)
                 if not node_data or 'inputs' not in node_data: return
-                waiting_list, dependency_tasks = [], []
-                slot_to_name_map = {i: inp['name'] for i, inp in enumerate(node_data.get('inputs', []))}
+                
+                initial_wait_list, dependency_tasks = [], []
 
                 for i, input_data in enumerate(node_data['inputs']):
                     target_key = f"{node_id}:{i}"
-                    if target_key in run_context["source_map"]:
-                        input_name = input_data['name']
-                        waiting_list.append(input_name)
-                        socket_def = node_instance.INPUT_SOCKETS.get(input_name)
-                        if not socket_def:
-                            base_name, _, index = input_name.rpartition('_')
-                            if base_name and index.isdigit():
-                                array_socket_def = node_instance.INPUT_SOCKETS.get(base_name)
-                                if array_socket_def and array_socket_def.get('array', False):
-                                    socket_def = array_socket_def
-                        is_dependency = socket_def and socket_def.get('is_dependency', False)
-                        if is_dependency:
-                            if activated_by_input and activated_by_input['target_input_name'] == input_name: continue
-                            source_info = run_context["source_map"][target_key]
-                            source_node_id, _ = source_info.split(':')
-                            task = asyncio.create_task(trigger_node(source_node_id))
-                            dependency_tasks.append(task)
-                            run_context["active_tasks"].add(task)
+                    if target_key not in run_context["source_map"]:
+                        continue
+
+                    input_name = input_data['name']
+                    
+                    # Resolve the socket definition, including for dynamic array sockets
+                    socket_def = node_instance.INPUT_SOCKETS.get(input_name)
+                    if not socket_def:
+                        base_name, _, index = input_name.rpartition('_')
+                        if base_name and index.isdigit():
+                            array_socket_def = node_instance.INPUT_SOCKETS.get(base_name)
+                            if array_socket_def and array_socket_def.get('array', False):
+                                socket_def = array_socket_def
+                    
+                    if not socket_def: continue
+
+                    # Check flags: do_not_wait has priority over is_dependency
+                    do_not_wait = socket_def.get('do_not_wait', False)
+                    is_dependency = socket_def.get('is_dependency', False) and not do_not_wait
+
+                    if not do_not_wait:
+                        initial_wait_list.append(input_name)
+
+                    if is_dependency:
+                        if activated_by_input and activated_by_input['target_input_name'] == input_name: continue
+                        source_info = run_context["source_map"][target_key]
+                        source_node_id, _ = source_info.split(':')
+                        task = asyncio.create_task(trigger_node(source_node_id))
+                        dependency_tasks.append(task)
+                        run_context["active_tasks"].add(task)
                 
-                run_context["waiting_on"][node_id] = waiting_list
-                print(f"LOG: Node {node_id} is WAITING for: {waiting_list}")
+                run_context["node_wait_configs"][node_id] = initial_wait_list
+                run_context["waiting_on"][node_id] = list(initial_wait_list)
+                print(f"LOG: Node {node_id} is WAITING for: {initial_wait_list}")
                 if dependency_tasks: await asyncio.gather(*dependency_tasks)
 
             async def process_incoming_data(node_id, push_datas):
@@ -202,9 +220,18 @@ class NodeEngine:
                 try:
                     # Check if the execute method is an async function
                     if inspect.iscoroutinefunction(node_instance.execute):
-                        node_outputs = await node_instance.execute(**kwargs)
+                        result = await node_instance.execute(**kwargs)
                     else:
-                        node_outputs = node_instance.execute(**kwargs)
+                        result = node_instance.execute(**kwargs)
+                    
+                    # Unpack result for potential NodeStateUpdate
+                    node_outputs, state_update = (result, None)
+                    if isinstance(result, tuple) and len(result) == 2 and isinstance(result[1], NodeStateUpdate):
+                        node_outputs, state_update = result
+                        if state_update.wait_for_inputs is not None:
+                            run_context["node_wait_configs"][node_id] = state_update.wait_for_inputs
+                            print(f"LOG: Node {node_id} updated its wait config to: {state_update.wait_for_inputs}")
+
                     run_context["node_states"][node_id] = "DONE"
                     run_context["outputs_cache"][node_id] = node_outputs
                     if node_outputs: await push_to_downstream(node_id, node_outputs)
@@ -226,6 +253,10 @@ class NodeEngine:
 
                 output_socket_defs = list(node_instance.OUTPUT_SOCKETS.items())
                 physical_slot_index = 0
+
+                # Ensure outputs is a tuple for consistent processing
+                if not isinstance(outputs, tuple):
+                    outputs = (outputs,)
 
                 # Iterate through the outputs returned by the node's execute() method
                 for logical_index, value in enumerate(outputs):
