@@ -37,3 +37,7 @@ If you want to extend the application with your own custom logic, please refer t
 The `devdocs.md` file in this repository serves two purposes:
 1.  It documents the development journey, architectural decisions, and technical challenges of the project.
 2.  It provides essential context for AI assistants to understand the project's structure and goals, enabling them to provide more effective help.
+
+## License
+
+This project is licensed under the [CC BY-NC-SA 4.0](./LICENSE) license.
