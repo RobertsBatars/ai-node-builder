@@ -86,9 +86,34 @@
                 
                 ws.onopen = () => log("Connected to backend");
                 
-                ws.onmessage = (event) => {
-                    log(event.data);
-                    if (event.data.includes("Workflow finished") || event.data.includes("Workflow stopped") || event.data.startsWith("Error:")) {
+                ws.onmessage = function (event) {
+                    const statusLog = document.getElementById('status-log');
+                    
+                    // Try to parse the message as JSON
+                    try {
+                        const data = JSON.parse(event.data);
+                        // If it's a structured message from a node, log it to the console
+                        // but do not display it in the UI.
+                        if (data.source === 'node') {
+                            console.log("Node Message:", data);
+                            return; // Stop processing and do not display in UI
+                        }
+                    } catch (e) {
+                        // Not a JSON message, so it's a plain text log from the engine.
+                        // We can proceed to display it.
+                    }
+
+                    // If we're here, it's a message to be displayed in the status log.
+                    const messageText = event.data;
+
+                    // Don't overwrite a final "stopped" message with "disconnected"
+                    if (messageText.startsWith("Disconnected") && statusLog.textContent.includes("stopped")) {
+                        return;
+                    }
+                    statusLog.textContent = `Status: ${messageText}`;
+
+                    // Check for workflow completion messages to reset the UI state.
+                    if (messageText.includes("Workflow finished") || messageText.includes("Workflow stopped")) {
                         setWorkflowRunningState(false);
                     }
                 };

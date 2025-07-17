@@ -130,3 +130,25 @@ The system for defining a node's UI was successful. It avoids the need for separ
 
 * **"Tool Provider" Interface**: A standard interface based on the **Model Context Protocol (MCP)** will allow for two types of tool nodes: an MCP Client Node for external servers and a Python Script Node for simple, internal tools.  
 * **Universal LLM Support**: Using a library like **LiteLLM** will allow a single LLMNode to act as a universal interface to over 100 different AI models by translating requests into the standardized OpenAI API format.
+
+## **6. Testing Framework**
+
+To ensure the stability and correctness of the node engine and the individual nodes, a dedicated, CLI-based testing framework was implemented. The framework is designed to be separate from the main application server but interacts with it in the same way a real user would.
+
+*   **Test Runner (`test_runner.py`)**: This is a standalone Python script that serves as the entry point for all tests. It is executed from the command line (`python test_runner.py`).
+
+*   **Test Discovery**: The runner automatically discovers test cases by scanning the `/tests` directory for workflow files matching the pattern `test_*.json`.
+
+*   **Workflow-based Tests**: Each test case is a complete workflow saved as a JSON file from the UI. This approach has the benefit of testing the actual graph execution logic, including node interactions, state, and data flow, in a realistic environment.
+
+*   **The `AssertNode`**: The core of the testing logic is the `AssertNode`, a special node available in the "Testing" category.
+    -   It takes an `actual` value from the workflow and an `expected` value (usually from a static `InputNode`).
+    -   If the values match, the test continues.
+    -   If they do not match, the node raises an `AssertionError`, which is caught by the engine and reported to the test runner as a test failure.
+
+*   **Communication**: The test runner communicates with the running application server via WebSockets, exactly like the frontend client. It sends the "run" command with the test workflow's graph data and listens for messages.
+
+*   **Success and Failure Conditions**:
+    1.  A test **fails** if the `AssertNode` raises an exception (`AssertionError`).
+    2.  A test **fails** if the workflow completes but no `AssertNode` was ever executed. This prevents "false positives" where a broken workflow finishes without actually verifying the result.
+    3.  A test **passes** only if the workflow completes *and* at least one `AssertNode` has successfully executed. This is verified by having the `AssertNode` send a special `TEST_EVENT` message to the client, which the test runner listens for.

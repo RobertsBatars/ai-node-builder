@@ -1,5 +1,6 @@
 # nodes/test_nodes.py
-from core.definitions import BaseNode, SocketType, NodeStateUpdate
+from core.definitions import BaseNode, SocketType, NodeStateUpdate, InputWidget, SKIP_OUTPUT
+
 
 class SocketArrayTestNode(BaseNode):
     CATEGORY = "Test"
@@ -51,6 +52,7 @@ class LoopingAccumulatorNode(BaseNode):
     """
     A node that demonstrates the "do not wait" and dynamic state update features to create a loop.
     It takes an initial value, then adds to it every time the 'add_value' input is triggered.
+    Once the total exceeds a threshold, it fires a separate output.
     """
     CATEGORY = "Test"
     INPUT_SOCKETS = {
@@ -58,8 +60,12 @@ class LoopingAccumulatorNode(BaseNode):
         "add_value": {"type": SocketType.NUMBER, "do_not_wait": True}
     }
     OUTPUT_SOCKETS = {
-        "result": {"type": SocketType.NUMBER}
+        "result": {"type": SocketType.NUMBER},
+        "threshold_reached": {"type": SocketType.NUMBER} # New output
     }
+
+    # Widget to define the threshold
+    threshold = InputWidget(widget_type="NUMBER", default=100)
 
     def load(self):
         # Initialize memory state
@@ -68,11 +74,12 @@ class LoopingAccumulatorNode(BaseNode):
 
     def execute(self, initial_value=None, add_value=None):
         is_initialized = self.memory.get('is_initialized', False)
+        threshold_val = float(self.widget_values.get('threshold', self.threshold.default))
 
         if not is_initialized:
             # First execution: triggered by 'initial_value'
             if initial_value is None:
-                return (0,) # Should not happen if graph is correct
+                return (0, SKIP_OUTPUT)
 
             total = float(initial_value)
             self.memory['total'] = total
@@ -81,19 +88,25 @@ class LoopingAccumulatorNode(BaseNode):
             print(f"LoopingAccumulator: Initialized with {total}")
 
             # IMPORTANT: Tell the engine to only wait for 'add_value' from now on.
-            # This creates the loop behavior.
             state_update = NodeStateUpdate(wait_for_inputs=['add_value'])
-            return ((total,), state_update)
+            
+            if total > threshold_val:
+                return ((SKIP_OUTPUT, total), state_update)
+            else:
+                return ((total, SKIP_OUTPUT), state_update)
         else:
             # Subsequent executions: triggered by 'add_value'
             if add_value is None:
-                # If triggered by something else without a value, just output current total
-                return (self.memory['total'],)
+                return (self.memory['total'], SKIP_OUTPUT)
 
             total = self.memory['total'] + float(add_value)
             self.memory['total'] = total
             
             print(f"LoopingAccumulator: Added {add_value}, new total is {total}")
             
-            # No state update needed, the wait config is already correct.
-            return (total,)
+            if total > threshold_val:
+                # When threshold is passed, fire the new output and skip the regular one.
+                return (SKIP_OUTPUT, total)
+            else:
+                # Otherwise, fire the regular output.
+                return (total, SKIP_OUTPUT)

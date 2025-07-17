@@ -4,12 +4,20 @@
 from abc import ABC, abstractmethod
 from enum import Enum
 import inspect
+import json
 
 # A special sentinel object to indicate that an output should be skipped.
 SKIP_OUTPUT = object()
 
 # A global counter to ensure widgets are ordered correctly
 WIDGET_ORDER_COUNTER = 0
+
+class MessageType(Enum):
+    """Defines the valid types for messages sent from a node to the client."""
+    LOG = "log"          # For general information
+    DEBUG = "debug"      # For detailed, verbose information for developers
+    TEST_EVENT = "test"  # For events specifically related to testing, like an assertion
+    ERROR = "error"      # For reporting non-fatal errors from within a node
 
 class SocketType(Enum):
     """
@@ -74,6 +82,20 @@ class BaseNode(ABC):
                 if i < len(widget_declarations):
                     widget_name = widget_declarations[i][0]
                     self.widget_values[widget_name] = value
+
+    async def send_message_to_client(self, message_type: MessageType, data: dict):
+        """Sends a structured, type-safe message to the connected client."""
+        if hasattr(self, '_websocket') and self._websocket:
+            full_message = {
+                "source": "node",
+                "type": message_type.value, # Use the enum's value for the JSON string
+                "payload": {
+                    "node_id": self.node_info.get('id'),
+                    "node_type": self.__class__.__name__,
+                    "data": data
+                }
+            }
+            await self._websocket.send_text(json.dumps(full_message))
 
     def get_input_name_by_slot(self, slot_index):
         """Helper to find an input socket's name by its position."""

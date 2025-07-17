@@ -70,6 +70,11 @@ class NodeEngine:
             str(n['id']): self.node_classes[n['type'].split('/')[-1]](self, n, node_memory[str(n['id'])])
             for n in graph_data['nodes'] if n['type'].split('/')[-1] in self.node_classes
         }
+
+        # Inject the websocket context into each node instance for this run.
+        for node in nodes_map.values():
+            node._websocket = websocket
+
         for node in nodes_map.values():
             node.load()
         await websocket.send_text("Engine: All nodes loaded.")

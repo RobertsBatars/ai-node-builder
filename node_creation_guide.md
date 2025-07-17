@@ -407,7 +407,12 @@ class LoopingAccumulatorNode(BaseNode):
         # This input will not be waited for initially. It will trigger subsequent executions.
         "add_value": {"type": SocketType.NUMBER, "do_not_wait": True}
     }
-    OUTPUT_SOCKETS = { "result": {"type": SocketType.NUMBER} }
+    OUTPUT_SOCKETS = {
+        "result": {"type": SocketType.NUMBER},
+        "threshold_reached": {"type": SocketType.NUMBER}
+    }
+
+    threshold = InputWidget(widget_type="NUMBER", default=100)
 
     def load(self):
         # Best practice to initialize memory in load()
@@ -415,34 +420,100 @@ class LoopingAccumulatorNode(BaseNode):
         self.memory['is_initialized'] = False
 
     def execute(self, initial_value=None, add_value=None):
-        if not self.memory['is_initialized']:
+        is_initialized = self.memory.get('is_initialized', False)
+        threshold_val = float(self.widget_values.get('threshold', self.threshold.default))
+
+        if not is_initialized:
             # FIRST RUN: Triggered by 'initial_value'.
-            if initial_value is None: return (0,) # Should not happen
+            if initial_value is None: return (0, SKIP_OUTPUT)
             
             total = float(initial_value)
             self.memory['total'] = total
             self.memory['is_initialized'] = True
             
             # Create the state update object.
-            # Tell the engine to ONLY wait for 'add_value' from now on.
             state_update = NodeStateUpdate(wait_for_inputs=['add_value'])
             
-            # Return the output tuple AND the state update object.
-            return ((total,), state_update)
+            if total > threshold_val:
+                return ((SKIP_OUTPUT, total), state_update)
+            else:
+                return ((total, SKIP_OUTPUT), state_update)
         else:
             # SUBSEQUENT RUNS: Triggered by 'add_value'.
-            if add_value is None: return (self.memory['total'],)
+            if add_value is None: return (self.memory['total'], SKIP_OUTPUT)
 
             total = self.memory['total'] + float(add_value)
             self.memory['total'] = total
             
-            # No state update needed, the configuration is already correct.
-            return (total,)
-```
+            if total > threshold_val:
+                return (SKIP_OUTPUT, total)
+            else:
+                return (total, SKIP_OUTPUT)
 
 ---
 
-## 9. Best Practices and Considerations
+## 9. Advanced Feature: Sending Messages to the Client
+
+Nodes have a built-in, structured way to send messages directly to the connected client (e.g., the frontend UI or a test runner). This is useful for logging, debugging, or sending custom events to trigger UI updates, without using an output socket.
+
+### How It Works
+
+The `BaseNode` class provides an `async` helper method called `send_message_to_client`. To use it, your node's `execute` method must also be defined as `async def`.
+
+The method sends a structured JSON message over the WebSocket. This allows the client to distinguish messages sent by nodes from the standard status messages sent by the engine.
+
+### The `MessageType` Enum
+
+To keep messages consistent and easy to filter, you must specify a message type using the `MessageType` enum, which you can import from `core.definitions`. The available types are:
+- `MessageType.LOG`: For general, informative messages.
+- `MessageType.DEBUG`: For more verbose, developer-focused information.
+- `MessageType.TEST_EVENT`: For messages specifically intended for a test runner to capture.
+- `MessageType.ERROR`: For reporting non-fatal errors from within a node.
+
+### Example: A Node that Logs its Progress
+
+Let's create a node that processes some data and sends log messages to the client at each step.
+
+```python
+# in a file like nodes/custom_nodes.py
+import asyncio
+from core.definitions import BaseNode, SocketType, MessageType
+
+class LoggingProcessorNode(BaseNode):
+    CATEGORY = "Utility"
+    INPUT_SOCKETS = {"data_in": {"type": SocketType.ANY}}
+    OUTPUT_SOCKETS = {"data_out": {"type": SocketType.ANY}}
+
+    async def execute(self, data_in):
+        # --- Sending a LOG message ---
+        await self.send_message_to_client(
+            MessageType.LOG, 
+            {"message": f"Started processing data: {data_in}"}
+        )
+
+        # Simulate some work
+        await asyncio.sleep(2) 
+        processed_data = str(data_in).upper()
+
+        # --- Sending a DEBUG message ---
+        await self.send_message_to_client(
+            MessageType.DEBUG,
+            {"message": "Data transformation complete.", "original": data_in, "transformed": processed_data}
+        )
+
+        return (processed_data,)
+```
+
+### Key Takeaways for Client Messaging
+- Your node's `execute` method must be `async def`.
+- Import `MessageType` from `core.definitions`.
+- Call `await self.send_message_to_client(message_type, data_dict)`.
+- The `data_dict` is a standard Python dictionary containing whatever information you want to send.
+- The client is responsible for deciding how to display or handle these messages.
+
+---
+
+## 10. Best Practices and Considerations
 
 - **Keep Nodes Atomic**: Each node should perform a single, clear task. Instead of one giant node that does three things, create three smaller nodes. This makes your workflows more flexible and easier to debug.
 - **Initialize Memory**: When using stateful nodes, it is best practice to initialize all expected keys for `self.memory` in the `load()` method. This prevents potential `KeyError` exceptions and makes the node's expected state clear.

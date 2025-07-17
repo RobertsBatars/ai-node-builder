@@ -32,6 +32,17 @@ A modular, node-based graphical application for creating and running AI and data
 
 If you want to extend the application with your own custom logic, please refer to the [Node Creation Guide](./node_creation_guide.md) for a detailed walkthrough on how to build new nodes.
 
+### Testing
+
+This project includes a command-line test runner to verify workflow functionality.
+
+1.  Make sure the main application server is running (`python main.py`).
+2.  In a separate terminal, run the test runner:
+    ```bash
+    python test_runner.py
+    ```
+The runner will execute all test workflows located in the `/tests` directory.
+
 ### Developer Documentation (`devdocs.md`)
 
 The `devdocs.md` file in this repository serves two purposes:

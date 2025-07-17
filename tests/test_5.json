@@ -1,0 +1,247 @@
+{
+  "graph_data": {
+    "last_node_id": 30,
+    "last_link_id": 42,
+    "nodes": [
+      {
+        "id": 24,
+        "type": "Utility/WaitNode",
+        "pos": [
+          794,
+          213
+        ],
+        "size": {
+          "0": 210,
+          "1": 58
+        },
+        "flags": {},
+        "order": 2,
+        "mode": 0,
+        "inputs": [
+          {
+            "name": "trigger",
+            "type": "*",
+            "link": 38
+          }
+        ],
+        "outputs": [
+          {
+            "name": "output",
+            "type": "*",
+            "links": [
+              39
+            ],
+            "slot_index": 0
+          }
+        ],
+        "properties": {
+          "wait_time_seconds": 0.5
+        },
+        "widgets_values": [
+          0.5
+        ]
+      },
+      {
+        "id": 26,
+        "type": "Test/LoopingAccumulatorNode",
+        "pos": [
+          773,
+          0
+        ],
+        "size": {
+          "0": 262,
+          "1": 78
+        },
+        "flags": {},
+        "order": 3,
+        "mode": 0,
+        "inputs": [
+          {
+            "name": "initial_value",
+            "type": "NUMBER",
+            "link": 37
+          },
+          {
+            "name": "add_value",
+            "type": "NUMBER",
+            "link": 39
+          }
+        ],
+        "outputs": [
+          {
+            "name": "result",
+            "type": "NUMBER",
+            "links": [
+              38
+            ],
+            "slot_index": 0
+          },
+          {
+            "name": "threshold_reached",
+            "type": "NUMBER",
+            "links": [
+              41
+            ],
+            "slot_index": 1
+          }
+        ],
+        "properties": {
+          "threshold": 100
+        },
+        "widgets_values": [
+          100
+        ]
+      },
+      {
+        "id": 28,
+        "type": "Testing/AssertNode",
+        "pos": [
+          1236,
+          -1
+        ],
+        "size": {
+          "0": 161.1999969482422,
+          "1": 46
+        },
+        "flags": {},
+        "order": 4,
+        "mode": 0,
+        "inputs": [
+          {
+            "name": "actual",
+            "type": "*",
+            "link": 41
+          },
+          {
+            "name": "expected",
+            "type": "*",
+            "link": 42
+          }
+        ],
+        "outputs": [
+          {
+            "name": "on_success",
+            "type": "*",
+            "links": null
+          },
+          {
+            "name": "on_failure",
+            "type": "*",
+            "links": null
+          }
+        ],
+        "properties": {},
+        "widgets_values": []
+      },
+      {
+        "id": 30,
+        "type": "Input/NumberNode",
+        "pos": [
+          1090,
+          180
+        ],
+        "size": {
+          "0": 210,
+          "1": 58
+        },
+        "flags": {},
+        "order": 1,
+        "mode": 0,
+        "outputs": [
+          {
+            "name": "number_out",
+            "type": "NUMBER",
+            "links": [
+              42
+            ],
+            "slot_index": 0
+          }
+        ],
+        "properties": {
+          "value": 160
+        },
+        "widgets_values": [
+          160
+        ]
+      },
+      {
+        "id": 25,
+        "type": "Input/NumberNode",
+        "pos": [
+          454,
+          2
+        ],
+        "size": {
+          "0": 210,
+          "1": 58
+        },
+        "flags": {},
+        "order": 0,
+        "mode": 0,
+        "outputs": [
+          {
+            "name": "number_out",
+            "type": "NUMBER",
+            "links": [
+              37
+            ],
+            "slot_index": 0
+          }
+        ],
+        "properties": {
+          "value": 10
+        },
+        "widgets_values": [
+          10
+        ]
+      }
+    ],
+    "links": [
+      [
+        37,
+        25,
+        0,
+        26,
+        0,
+        "NUMBER"
+      ],
+      [
+        38,
+        26,
+        0,
+        24,
+        0,
+        "*"
+      ],
+      [
+        39,
+        24,
+        0,
+        26,
+        1,
+        "NUMBER"
+      ],
+      [
+        41,
+        26,
+        1,
+        28,
+        0,
+        "*"
+      ],
+      [
+        42,
+        30,
+        0,
+        28,
+        1,
+        "*"
+      ]
+    ],
+    "groups": [],
+    "config": {},
+    "extra": {},
+    "version": 0.4
+  },
+  "start_node_id": "25"
+}
