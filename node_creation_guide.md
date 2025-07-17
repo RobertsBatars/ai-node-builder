@@ -449,7 +449,7 @@ class LoopingAccumulatorNode(BaseNode):
                 return (SKIP_OUTPUT, total)
             else:
                 return (total, SKIP_OUTPUT)
-
+```
 ---
 
 ## 9. Advanced Feature: Sending Messages to the Client
