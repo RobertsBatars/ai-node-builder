@@ -34,15 +34,18 @@ class NodeEngine:
             inputs_def = [
                 {"name": n, **s} for n, s in node_class.INPUT_SOCKETS.items()
             ]
+            outputs_def = [
+                {"name": n, **s} for n, s in node_class.OUTPUT_SOCKETS.items()
+            ]
             # Convert enums to string values for JSON serialization
-            for input_def in inputs_def:
-                if 'type' in input_def and hasattr(input_def['type'], 'value'):
-                    input_def['type'] = input_def['type'].value
+            for item_def in inputs_def + outputs_def:
+                if 'type' in item_def and hasattr(item_def['type'], 'value'):
+                    item_def['type'] = item_def['type'].value
 
             node_def = {
                 "name": name, "category": node_class.CATEGORY,
                 "inputs": inputs_def,
-                "outputs": [{"name": n, "type": s["type"].value} for n, s in node_class.OUTPUT_SOCKETS.items()],
+                "outputs": outputs_def,
                 "widgets": []
             }
             widget_declarations = sorted(
@@ -213,18 +216,66 @@ class NodeEngine:
                     run_context["node_states"][node_id] = "ERROR"
 
             async def push_to_downstream(source_node_id, outputs):
-                # Group all pushes by the target node ID to avoid race conditions
                 pushes_by_node = defaultdict(list)
-                for i, value in enumerate(outputs):
-                    if value is SKIP_OUTPUT: continue
-                    source_key = f"{source_node_id}:{i}"
-                    for target_key in run_context["target_map"].get(source_key, []):
-                        target_node_id, target_slot_str = target_key.split(':')
-                        target_node_data = next((n for n in graph_data['nodes'] if str(n['id']) == target_node_id), None)
-                        target_input_info = target_node_data['inputs'][int(target_slot_str)]
-                        target_input_name = target_input_info['name']
-                        push_data = {"target_input_name": target_input_name, "value": value}
-                        pushes_by_node[target_node_id].append(push_data)
+                node_instance = run_context["nodes"][source_node_id]
+                node_data = next((n for n in graph_data['nodes'] if str(n['id']) == source_node_id), None)
+                
+                if not node_data:
+                    print(f"ERROR: Could not find node data for {source_node_id} during push.")
+                    return
+
+                output_socket_defs = list(node_instance.OUTPUT_SOCKETS.items())
+                physical_slot_index = 0
+
+                # Iterate through the outputs returned by the node's execute() method
+                for logical_index, value in enumerate(outputs):
+                    if logical_index >= len(output_socket_defs):
+                        break # Should not happen in normal execution
+
+                    socket_name, socket_def = output_socket_defs[logical_index]
+                    is_array = socket_def.get('array', False)
+
+                    if is_array:
+                        # This output is a dynamic array. The 'value' should be a list.
+                        if not isinstance(value, list):
+                            print(f"WARNING: Output for array socket '{socket_name}' is not a list. Skipping.")
+                            # We still need to account for the outputs that *should* have been there
+                            # Count how many frontend slots this array has.
+                            num_physical_slots = sum(1 for o in node_data.get('outputs', []) if o['name'].startswith(socket_name + '_'))
+                            physical_slot_index += num_physical_slots
+                            continue
+                        
+                        # Iterate through each item in the returned list
+                        for item in value:
+                            if item is SKIP_OUTPUT:
+                                print(f"LOG: Skipping an item in output array {socket_name}")
+                            else:
+                                source_key = f"{source_node_id}:{physical_slot_index}"
+                                for target_key in run_context["target_map"].get(source_key, []):
+                                    target_node_id, target_slot_str = target_key.split(':')
+                                    target_node_data = next((n for n in graph_data['nodes'] if str(n['id']) == target_node_id), None)
+                                    target_input_info = target_node_data['inputs'][int(target_slot_str)]
+                                    target_input_name = target_input_info['name']
+                                    push_data = {"target_input_name": target_input_name, "value": item}
+                                    pushes_by_node[target_node_id].append(push_data)
+                            
+                            # Move to the next physical slot for the next item in the array
+                            physical_slot_index += 1
+
+                    else:
+                        # This is a standard, single output
+                        if value is not SKIP_OUTPUT:
+                            source_key = f"{source_node_id}:{physical_slot_index}"
+                            for target_key in run_context["target_map"].get(source_key, []):
+                                target_node_id, target_slot_str = target_key.split(':')
+                                target_node_data = next((n for n in graph_data['nodes'] if str(n['id']) == target_node_id), None)
+                                target_input_info = target_node_data['inputs'][int(target_slot_str)]
+                                target_input_name = target_input_info['name']
+                                push_data = {"target_input_name": target_input_name, "value": value}
+                                pushes_by_node[target_node_id].append(push_data)
+                        
+                        # Move to the next physical slot for the next standard output
+                        physical_slot_index += 1
 
                 # Create a single trigger task for each downstream node
                 push_tasks = []

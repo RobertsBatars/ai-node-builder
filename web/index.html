@@ -122,104 +122,105 @@
 
                 nodeBlueprints.forEach(blueprint => {
                     function DynamicNode() {
-                        // ====================================================================
-                        // Part 1: Standard Setup (Outputs, Widgets, Properties)
-                        // ====================================================================
-                        blueprint.outputs.forEach(output => this.addOutput(output.name, output.type));
+                        const that = this; // Keep reference to 'this'
                         this.serialize_widgets = true;
                         this.properties = this.properties || {};
 
+                        // ====================================================================
+                        // Part 1: WIDGETS & STATIC SOCKETS
+                        // ====================================================================
+                        // Setup static widgets from blueprint
                         blueprint.widgets.forEach(widgetDef => {
                             const { name, type, default: defaultValue, properties: widgetProps } = widgetDef;
-                            if (this.properties[name] === undefined) {
-                                this.properties[name] = defaultValue;
-                            }
-                            const actualWidgetProperties = widgetProps || {};
+                            if (that.properties[name] === undefined) that.properties[name] = defaultValue;
+                            
+                            const options = { ...widgetProps, property: name };
                             let liteGraphWidgetType = type.toLowerCase();
                             if (type.toUpperCase() === "BOOLEAN") liteGraphWidgetType = "toggle";
 
                             if (type.toUpperCase() === "COMBO") {
-                                this.addWidget("combo", name, this.properties[name], (value) => {
-                                    this.properties[name] = value;
-                                }, { values: actualWidgetProperties.values || [] });
+                                that.addWidget("combo", name, that.properties[name], value => that.properties[name] = value, { values: options.values || [] });
                             } else {
-                                const options = { ...actualWidgetProperties, property: name };
-                                this.addWidget(liteGraphWidgetType, name, this.properties[name], null, options);
+                                that.addWidget(liteGraphWidgetType, name, that.properties[name], null, options);
                             }
                         });
 
-                        // ====================================================================
-                        // Part 2: Dynamic Input Logic
-                        // ====================================================================
-                        const updateRemoveButtons = () => {
-                            this.widgets = (this.widgets || []).filter(w => !w.isRemoveButton);
+                        // Setup static (non-array) inputs and outputs
+                        blueprint.inputs.forEach(input => !input.array && that.addInput(input.name, input.type));
+                        blueprint.outputs.forEach(output => !output.array && that.addOutput(output.name, output.type));
 
-                            const dynamicArrays = {};
-                            if (this.inputs) {
-                                this.inputs.forEach((input, index) => {
-                                    const baseName = input.name.substring(0, input.name.lastIndexOf('_'));
-                                    const isDynamic = blueprint.inputs.some(inp => inp.name === baseName && inp.array);
-                                    if (isDynamic) {
-                                        if (!dynamicArrays[baseName]) {
-                                            dynamicArrays[baseName] = [];
-                                        }
-                                        dynamicArrays[baseName].push({ index, name: input.name });
-                                    }
-                                });
-                            }
+                        // ====================================================================
+                        // Part 2: DYNAMIC SLOT MANAGEMENT
+                        // ====================================================================
+                        const findLastSlot = (basename, type) => {
+                            const slots = (type === 'input' ? that.inputs : that.outputs) || [];
+                            return slots.filter(s => s.name.startsWith(basename + '_'))
+                                        .map(s => ({ ...s, index: (type === 'input' ? that.inputs : that.outputs).indexOf(s) }))
+                                        .sort((a, b) => parseInt(a.name.split('_').pop()) - parseInt(b.name.split('_').pop()))
+                                        .pop();
+                        };
 
-                            for (const baseName in dynamicArrays) {
-                                if (dynamicArrays[baseName].length > 0) {
-                                    const widget = this.addWidget("button", `- ${baseName}`, "", () => {
-                                        const inputsToRemove = dynamicArrays[baseName];
-                                        if (inputsToRemove.length > 0) {
-                                            // Sort by index descending to remove from the end
-                                            inputsToRemove.sort((a, b) => b.index - a.index);
-                                            this.removeInput(inputsToRemove[0].index);
-                                            updateRemoveButtons();
-                                        }
-                                    });
-                                    widget.isRemoveButton = true;
+                        const updateDynamicWidgets = () => {
+                            // Remove all existing dynamic buttons to prevent duplicates
+                            that.widgets = (that.widgets || []).filter(w => !w.isDynamicButton);
+
+                            const createButton = (name, callback) => {
+                                const button = that.addWidget("button", name, "", callback);
+                                button.isDynamicButton = true;
+                            };
+
+                            // Add buttons for dynamic INPUTS
+                            blueprint.inputs.filter(i => i.array).forEach(inputDef => {
+                                createButton(`+ ${inputDef.name}`, () => addDynamicSlot(inputDef.name, inputDef.type, 'input'));
+                                if (findLastSlot(inputDef.name, 'input')) {
+                                    createButton(`- ${inputDef.name}`, () => removeDynamicSlot(inputDef.name, 'input'));
                                 }
-                            }
-                            this.setDirtyCanvas(true, true);
+                            });
+
+                            // Add buttons for dynamic OUTPUTS
+                            blueprint.outputs.filter(o => o.array).forEach(outputDef => {
+                                createButton(`+ ${outputDef.name}`, () => addDynamicSlot(outputDef.name, outputDef.type, 'output'));
+                                if (findLastSlot(outputDef.name, 'output')) {
+                                    createButton(`- ${outputDef.name}`, () => removeDynamicSlot(outputDef.name, 'output'));
+                                }
+                            });
+                            that.setDirtyCanvas(true, true);
                         };
 
-                        const addDynamicInput = (name, type) => {
-                            const existingInputs = this.inputs ? this.inputs.filter(inp => inp.name.startsWith(name + "_")) : [];
+                        const addDynamicSlot = (basename, type, slotType) => {
+                            const collection = slotType === 'input' ? that.inputs : that.outputs;
+                            const existingSlots = collection ? collection.filter(s => s.name.startsWith(basename + "_")) : [];
+                            const existingIndices = new Set(existingSlots.map(s => parseInt(s.name.split('_').pop())));
                             let newIndex = 0;
-                            const existingIndices = new Set(existingInputs.map(inp => parseInt(inp.name.split('_').pop())));
-                            while (existingIndices.has(newIndex)) {
-                                newIndex++;
-                            }
-                            const newName = `${name}_${newIndex}`;
-                            this.addInput(newName, type);
-                            updateRemoveButtons(); // Update buttons after adding
+                            while (existingIndices.has(newIndex)) newIndex++;
+                            
+                            const newName = `${basename}_${newIndex}`;
+                            if (slotType === 'input') that.addInput(newName, type);
+                            else that.addOutput(newName, type);
+                            
+                            updateDynamicWidgets();
                         };
 
-                        // Process inputs from blueprint
-                        blueprint.inputs.forEach(inputDef => {
-                            if (inputDef.array) {
-                                // For array inputs, add a button to add more
-                                this.addWidget("button", `+ ${inputDef.name}`, "", () => {
-                                    addDynamicInput(inputDef.name, inputDef.type);
-                                });
-                            } else {
-                                // For regular inputs, add them directly
-                                this.addInput(inputDef.name, inputDef.type);
+                        const removeDynamicSlot = (basename, slotType) => {
+                            const lastSlot = findLastSlot(basename, slotType);
+                            if (lastSlot) {
+                                if (slotType === 'input') that.removeInput(lastSlot.index);
+                                else that.removeOutput(lastSlot.index);
+                                updateDynamicWidgets();
                             }
-                        });
+                        };
 
                         // ====================================================================
-                        // Part 3: Lifecycle Hooks
+                        // Part 3: LIFECYCLE HOOKS
                         // ====================================================================
-                        // This ensures that when a graph is loaded from a file, the remove buttons
-                        // for any existing dynamic inputs are created correctly.
                         this.onAdded = function() {
-                            // Use a timeout to ensure the node has been fully configured from the loaded data
-                            setTimeout(() => {
-                                updateRemoveButtons();
-                            }, 10);
+                            // Use a timeout to ensure the node has been fully configured from any loaded data
+                            setTimeout(() => updateDynamicWidgets(), 10);
+                        };
+                        
+                        this.onConnectionsChange = function() {
+                            // Also update on connection change to ensure buttons are correct
+                            setTimeout(() => updateDynamicWidgets(), 10);
                         };
                     }
 

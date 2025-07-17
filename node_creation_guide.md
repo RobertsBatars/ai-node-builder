@@ -167,58 +167,63 @@ class MathOperationNode(BaseNode):
 
 ## 4. Advanced Sockets: Dynamic Arrays
 
-The engine supports a powerful feature called **dynamic array sockets**. This allows you to create an input that can accept a variable number of connections. In the UI, this appears as a button on the node that lets the user add more input slots of the same type.
+The engine supports a powerful feature called **dynamic array sockets**. This allows you to create inputs and outputs that can accept a variable number of connections. In the UI, this appears as a per-array `+` and `-` button on the node, letting the user add or remove slots of the same type.
 
 ### How It Works
 
-When you declare an input socket with `"array": True`, the backend engine and frontend UI treat it differently:
+When you declare a socket with `"array": True` in `INPUT_SOCKETS` or `OUTPUT_SOCKETS`, the system treats it differently:
 
-1.  **UI**: Instead of a fixed input socket, the node will display a button (e.g., `+ texts`). Clicking this button adds a new input socket (e.g., `texts_0`, `texts_1`, etc.). Each of these can be connected to an output from another node.
-2.  **Backend**: When the node is executed, the engine gathers all the values from the dynamically added inputs (`texts_0`, `texts_1`, `texts_2`, ...), collects them into a single Python `list`, and passes that list as the argument to your `execute` method.
+1.  **UI**: Instead of a fixed socket, the node will display `+` and `-` buttons for that specific array (e.g., `+ texts`, `- texts`). Clicking `+` adds a new, numbered socket (e.g., `texts_0`, `texts_1`). Each of these can be connected independently.
 
-### Example: A "Concatenate Array" Node
+2.  **Backend (Inputs)**: When the node is executed, the engine gathers all the values from the dynamically added inputs (`texts_0`, `texts_1`, ...), collects them into a single Python `list`, and passes that list as the argument to your `execute` method.
 
-Let's look at the `ConcatenateArrayNode` from `simple_nodes.py`. It takes any number of text inputs and joins them together.
+3.  **Backend (Outputs)**: For a dynamic array output, your `execute` method must return a `list` of values. The engine will then map each item in that list to a corresponding output slot (`results_0`, `results_1`, etc.) and push the data downstream.
+
+### Example: A "Split Text" Node
+
+Let's create a node that takes a single string, splits it by a separator, and provides each piece on a dynamic output array.
 
 ```python
-# nodes/simple_nodes.py
+# in a file like nodes/custom_nodes.py
+from core.definitions import BaseNode, SocketType, InputWidget, SKIP_OUTPUT
 
-class ConcatenateArrayNode(BaseNode):
+class SplitTextNode(BaseNode):
     CATEGORY = "Text"
     
-    # --- Socket Definition ---
-    # 1. "array": True - This is the key to making the socket a dynamic array.
-    # 2. "is_dependency": True - This ensures that the nodes connected to this 
-    #    array will be called before executing the node as they will not initiate
-    #    the push themselves.
+    # --- Sockets ---
     INPUT_SOCKETS = {
-        "texts": {"type": SocketType.TEXT, "array": True, "is_dependency": True}
+        "text": {"type": SocketType.TEXT}
     }
-    
     OUTPUT_SOCKETS = {
-        "full_text": {"type": SocketType.TEXT}
+        # "array": True makes this a dynamic output array.
+        "parts": {"type": SocketType.TEXT, "array": True}
     }
     
-    separator = InputWidget(widget_type="TEXT", default=", ")
+    # --- Widget ---
+    separator = InputWidget(widget_type="TEXT", default=",")
 
     def load(self):
         pass
 
     # --- Execution ---
-    # The 'texts' argument will be a list of strings, not a single value.
-    # The engine handles the grouping and ordering for you.
-    def execute(self, texts):
-        separator_value = self.widget_values.get('separator', self.separator.default)
+    def execute(self, text):
+        separator_val = self.widget_values.get('separator', self.separator.default)
         
-        # The core logic is simple: join the list of strings.
-        result = separator_value.join(texts)
-        return (result,)
+        # The core logic: split the string into a list.
+        # This list will be mapped to the 'parts_0', 'parts_1', ... outputs.
+        result_list = text.split(separator_val)
+        
+        # The list must be returned inside a tuple because it corresponds to a single
+        # output socket definition ('parts').
+        return (result_list,)
 ```
 
-### Key Takeaways
+### Key Takeaways for Dynamic Arrays
 
--   To create a dynamic array input, add `"array": True` to its socket definition in `INPUT_SOCKETS`.
--   The argument passed to your `execute` method will be a Python `list` containing all the values from the connected inputs, ordered by their index (e.g., `texts_0`, `texts_1`, ...).
+-   To create a dynamic array, add `"array": True` to its socket definition in `INPUT_SOCKETS` or `OUTPUT_SOCKETS`.
+-   **For inputs**, the corresponding argument in your `execute` method will be a Python `list`.
+-   **For outputs**, the corresponding return value from your `execute` method must be a Python `list`.
+-   The `is_dependency` flag is often useful for array inputs to ensure all connected data is available before execution if the connected data nodes are not expected to push data on their own.
 
 ## 5. Available Widgets and Properties
 
@@ -250,6 +255,8 @@ enable_feature = InputWidget(widget_type="BOOLEAN", default=True)
 For creating nodes that control the flow of the graph (e.g., routing data based on a condition), you can instruct the engine to skip an output. This prevents any downstream nodes connected to that output from executing.
 
 To do this, you import the `SKIP_OUTPUT` object from `core.definitions` and return it in the position of the output you wish to skip in your `execute` method's return tuple.
+
+For a dynamic output array, you can place `SKIP_OUTPUT` within the returned list. The engine will not fire the output for the corresponding slot. For example, returning `(['A', SKIP_OUTPUT, 'B'],)` for an array output would fire `parts_0` with value `'A'`, skip `parts_1`, and fire `parts_2` with value `'B'`.
 
 ### Example: A Simple "Gate" Node
 

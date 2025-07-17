@@ -69,23 +69,20 @@ A key improvement to the engine is how it handles the "push" part of the cycle. 
 *   **The Solution (Grouped Pushes)**: The `push_to_downstream` function now gathers all the data packets and groups them by their `target_node_id`. It then creates a single `trigger_node` task for each unique downstream node, passing all the relevant data in a single batch.
 *   **Benefit**: This ensures that a downstream node receives all of its inputs from a single upstream execution cycle at once. This makes the execution more reliable, predictable, and efficient, completely avoiding the race condition scenario.
 
-### **3.5. Dynamic Array Sockets: A Flexible Input Model**
+### **3.5. Dynamic Array Sockets: A Flexible I/O Model**
 
-To support nodes that need to process a variable number of inputs (e.g., concatenating multiple text streams), the concept of **dynamic array sockets** was introduced. This feature is a collaboration between the frontend and the backend engine.
+To support nodes that need to process a variable number of inputs or produce a variable number of outputs, the concept of **dynamic array sockets** was introduced. This feature is a collaboration between the frontend and the backend engine.
 
 *   **Frontend Implementation (`web/index.html`)**:
-    *   When a node blueprint contains an input with the property `"array": True`, the frontend doesn't render a static input socket. Instead, it renders a button (e.g., `+ Add Input`).
-    *   Clicking this button dynamically adds a new input slot to the node, named with an index suffix (e.g., `my_input_0`, `my_input_1`).
-    *   A corresponding "remove" button is also added for each dynamic input array, allowing the user to remove the last added socket from that array.
+    *   When a node blueprint contains an input or output with the property `"array": True`, the frontend renders a per-array button (e.g., `+ Add Input`).
+    *   Clicking this button dynamically adds a new input/output slot to the node, named with an index suffix (e.g., `my_array_0`, `my_array_1`).
+    *   A corresponding per-array "remove" button allows the user to remove the last added socket from that specific array.
 
 *   **Backend Engine Implementation (`core/engine.py`)**:
-    *   The core of the implementation is in the `execute_node` function within the engine.
-    *   Before calling a node's `execute()` method, the engine inspects all the input data that has been cached for that node.
-    *   It identifies input names that follow the `basename_index` pattern (e.g., `texts_0`, `texts_1`).
-    *   If the `basename` corresponds to an input socket defined with `"array": True`, the engine groups all the values for these inputs into a single list.
-    *   This list, sorted by the index, is then passed as a single argument to the node's `execute()` method.
+    *   **For Inputs**: Before calling a node's `execute()` method, the engine identifies input names that follow the `basename_index` pattern. It groups the values for these inputs into a single list, which is then passed as a single argument to the `execute()` method.
+    *   **For Outputs**: After a node executes, if an output is an array, the engine expects the corresponding return value to be a list. It then iterates through this list, mapping each item to the corresponding physical output slot (`basename_0`, `basename_1`, etc.) and pushing the data downstream.
 
-*   **Example**: If a node has an array input named `texts`, and the user connects three inputs in the UI (which become `texts_0`, `texts_1`, `texts_2`), the `execute` method will be called as `execute(texts=['value_from_0', 'value_from_1', 'value_from_2'])`. This abstracts the complexity from the node developer, who simply receives a list.
+*   **Example**: A node with an array input `texts` will receive `['val_0', 'val_1']`. A node with an array output `results` can return `(['res_A', 'res_B'])`, and the engine will route `res_A` from the `results_0` slot and `res_B` from the `results_1` slot. This abstracts the complexity from the node developer.
 
 ### **3.5. Conditional Execution: Skipping Outputs**
 
