@@ -44,31 +44,36 @@ async def run_single_test(uri, test_file_path):
                 try:
                     message_str = await asyncio.wait_for(websocket.recv(), timeout=10.0)
                     
-                    # Try to parse the message as JSON
                     try:
                         message_obj = json.loads(message_str)
-                        source = message_obj.get("source")
                         msg_type = message_obj.get("type")
-                        payload = message_obj.get("payload", {})
 
-                        if source == "node" and msg_type == "test":
+                        if msg_type == "engine_log":
+                            message_text = message_obj.get("message", "")
+                            print(f"  [SERVER] {message_text}")
+                            if "Assertion Failed" in message_text or "Error in" in message_text:
+                                print(f"  RESULT: Test failed with error.")
+                                return "FAIL"
+                            if "Workflow finished" in message_text:
+                                # Only the frontend run should determine test pass/fail
+                                if message_obj.get("run_id") == "frontend_run":
+                                    if not assertion_executed:
+                                        print(f"  ERROR: Workflow finished but no assertion was executed.")
+                                        return "FAIL"
+                                    else:
+                                        print(f"  RESULT: Test passed.")
+                                        return "PASS"
+                        
+                        elif msg_type == "test" and message_obj.get("source") == "node":
+                            payload = message_obj.get("payload", {})
                             print(f"  [Node Event] {payload.get('node_type')}: {payload.get('data')}")
                             assertion_executed = True
-                        # Other node messages can be ignored or logged differently if needed
+                        
+                        # Other message types can be ignored
 
-                    except json.JSONDecodeError:
-                        # It's a plain text message from the engine
-                        print(f"  [SERVER] {message_str}")
-                        if "Assertion Failed" in message_str or "Error in" in message_str:
-                            print(f"  RESULT: Test failed with error.")
-                            return "FAIL"
-                        if "Workflow finished" in message_str:
-                            if not assertion_executed:
-                                print(f"  ERROR: Workflow finished but no assertion was executed.")
-                                return "FAIL"
-                            else:
-                                print(f"  RESULT: Test passed.")
-                                return "PASS"
+                    except (json.JSONDecodeError, AttributeError):
+                        print(f"  ERROR: Received invalid message from server: {message_str}")
+                        return "FAIL"
 
                 except asyncio.TimeoutError:
                     print("  ERROR: Test timed out. No 'Workflow finished' message received.")

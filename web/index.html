@@ -26,6 +26,12 @@
         #run-button:hover { background-color: #45a049; }
         #stop-button { background-color: #f44336; color: white; display: none; }
         #stop-button:hover { background-color: #D32F2F; }
+        
+        #listen-button { background-color: #2196F3; color: white; }
+        #listen-button:hover { background-color: #1E88E5; }
+        #stop-listen-button { background-color: #f44336; color: white; display: none; }
+        #stop-listen-button:hover { background-color: #D32F2F; }
+
         #save-button { background-color: #008CBA; color: white; }
         #save-button:hover { background-color: #007B9E; }
         #load-button { background-color: #f44336; color: white; }
@@ -39,6 +45,8 @@
     <div id="top-bar">
         <button id="run-button" class="top-button">RUN</button>
         <button id="stop-button" class="top-button">STOP</button>
+        <button id="listen-button" class="top-button">Listen for Events</button>
+        <button id="stop-listen-button" class="top-button">Stop Listening</button>
         <button id="save-button" class="top-button">Save</button>
         <button id="load-button" class="top-button">Load</button>
         <div id="status-log">Status: Disconnected</div>
@@ -49,15 +57,13 @@
             const statusLog = document.getElementById('status-log');
             const runButton = document.getElementById('run-button');
             const stopButton = document.getElementById('stop-button');
+            const listenButton = document.getElementById('listen-button');
+            const stopListenButton = document.getElementById('stop-listen-button');
             const saveButton = document.getElementById('save-button');
             const loadButton = document.getElementById('load-button');
 
             const log = (message) => {
                 console.log(message);
-                // Don't overwrite final "stopped" message with "disconnected"
-                if (message.startsWith("Disconnected") && statusLog.textContent.includes("stopped")) {
-                    return;
-                }
                 statusLog.textContent = `Status: ${message}`;
             };
 
@@ -70,6 +76,16 @@
                     runButton.classList.remove('disabled');
                     runButton.disabled = false;
                     stopButton.style.display = 'none';
+                }
+            };
+
+            const setListeningState = (isListening) => {
+                if (isListening) {
+                    listenButton.style.display = 'none';
+                    stopListenButton.style.display = 'inline-block';
+                } else {
+                    listenButton.style.display = 'inline-block';
+                    stopListenButton.style.display = 'none';
                 }
             };
 
@@ -87,40 +103,42 @@
                 ws.onopen = () => log("Connected to backend");
                 
                 ws.onmessage = function (event) {
-                    const statusLog = document.getElementById('status-log');
-                    
-                    // Try to parse the message as JSON
                     try {
                         const data = JSON.parse(event.data);
-                        // If it's a structured message from a node, log it to the console
-                        // but do not display it in the UI.
+                        console.log("Received data:", data);
+
                         if (data.source === 'node') {
-                            console.log("Node Message:", data);
-                            return; // Stop processing and do not display in UI
+                            // It's a message from a specific node (e.g., log, debug, test)
+                            // You can add custom handling here, e.g., display in a separate log panel
+                            console.log(`Node Message (run_id: ${data.run_id}):`, data.payload);
+                            return;
                         }
+
+                        if (data.type === 'engine_log') {
+                            const run_id = data.run_id;
+                            const message = data.message;
+                            
+                            // Add a prefix for event-driven runs to distinguish them in the log
+                            const logPrefix = run_id === 'frontend_run' ? '' : `[Event Run ${run_id.substring(0, 6)}] `;
+                            log(logPrefix + message);
+
+                            // The main "Run" button should only be re-enabled by the completion of the frontend-initiated workflow.
+                            if (run_id === 'frontend_run' && (message.includes("Workflow finished") || message.includes("Workflow stopped"))) {
+                                setWorkflowRunningState(false);
+                            }
+                        }
+
                     } catch (e) {
-                        // Not a JSON message, so it's a plain text log from the engine.
-                        // We can proceed to display it.
-                    }
-
-                    // If we're here, it's a message to be displayed in the status log.
-                    const messageText = event.data;
-
-                    // Don't overwrite a final "stopped" message with "disconnected"
-                    if (messageText.startsWith("Disconnected") && statusLog.textContent.includes("stopped")) {
-                        return;
-                    }
-                    statusLog.textContent = `Status: ${messageText}`;
-
-                    // Check for workflow completion messages to reset the UI state.
-                    if (messageText.includes("Workflow finished") || messageText.includes("Workflow stopped")) {
-                        setWorkflowRunningState(false);
+                        // Fallback for any non-JSON messages, though the backend should not send them anymore.
+                        console.error("Received non-JSON message:", event.data);
+                        log(event.data);
                     }
                 };
                 
                 ws.onclose = () => {
                     log("Disconnected from backend");
                     setWorkflowRunningState(false);
+                    setListeningState(false);
                     // Optional: try to reconnect
                     // setTimeout(connectWebSocket, 5000); 
                 };
@@ -128,6 +146,7 @@
                 ws.onerror = () => {
                     log("Connection error");
                     setWorkflowRunningState(false);
+                    setListeningState(false);
                 };
             }
             connectWebSocket();
@@ -286,10 +305,33 @@
 
             stopButton.addEventListener("click", () => {
                 if (ws.readyState === WebSocket.OPEN) {
-                    log("Requesting to stop workflow...");
+                    log("Requesting to stop all workflows...");
                     ws.send(JSON.stringify({ action: "stop" }));
                 } else {
                     log("Cannot stop. WebSocket is not connected.");
+                }
+            });
+
+            listenButton.addEventListener("click", () => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    log("Requesting to start event listeners...");
+                    setListeningState(true);
+                    ws.send(JSON.stringify({
+                        action: "start_listening",
+                        graph: graph.serialize()
+                    }));
+                } else {
+                    log("Cannot listen. WebSocket is not connected.");
+                }
+            });
+
+            stopListenButton.addEventListener("click", () => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    log("Requesting to stop event listeners...");
+                    setListeningState(false);
+                    ws.send(JSON.stringify({ action: "stop_listening" }));
+                } else {
+                    log("Cannot stop listening. WebSocket is not connected.");
                 }
             });
             

@@ -67,10 +67,11 @@ class BaseNode(ABC):
     INPUT_SOCKETS = {}
     OUTPUT_SOCKETS = {}
 
-    def __init__(self, engine, node_info, memory):
+    def __init__(self, engine, node_info, memory, run_id=None):
         self.engine = engine
         self.node_info = node_info
         self.memory = memory
+        self.run_id = run_id
         
         self.widget_values = {}
         if 'widgets_values' in self.node_info and self.node_info['widgets_values'] is not None:
@@ -89,6 +90,7 @@ class BaseNode(ABC):
             full_message = {
                 "source": "node",
                 "type": message_type.value, # Use the enum's value for the JSON string
+                "run_id": self.run_id,
                 "payload": {
                     "node_id": self.node_info.get('id'),
                     "node_type": self.__class__.__name__,
@@ -118,4 +120,22 @@ class BaseNode(ABC):
            - A NodeStateUpdate object to dynamically change the node's behavior.
            e.g., ((value_for_output_1,), NodeStateUpdate(wait_for_inputs=['new_input']))
         """
+        pass
+
+
+class EventNode(BaseNode):
+    """
+    Abstract Base Class for nodes that can trigger workflows based on external events.
+    """
+    @abstractmethod
+    async def start_listening(self, trigger_workflow_callback):
+        """
+        Start listening for the external event. When the event occurs, this method
+        should call the provided `trigger_workflow_callback` function.
+        """
+        pass
+
+    @abstractmethod
+    async def stop_listening(self):
+        """Stop listening for the external event."""
         pass

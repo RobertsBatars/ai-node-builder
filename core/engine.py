@@ -8,7 +8,7 @@ import importlib
 import asyncio
 from collections import defaultdict
 
-from core.definitions import BaseNode, InputWidget, SKIP_OUTPUT, NodeStateUpdate
+from core.definitions import BaseNode, EventNode, InputWidget, SKIP_OUTPUT, NodeStateUpdate
 
 class NodeEngine:
     def __init__(self):
@@ -21,7 +21,7 @@ class NodeEngine:
             try:
                 module = importlib.import_module(name)
                 for _, item in inspect.getmembers(module, inspect.isclass):
-                    if issubclass(item, BaseNode) and item is not BaseNode:
+                    if issubclass(item, BaseNode) and item is not BaseNode and item is not EventNode:
                         self.node_classes[item.__name__] = item
             except Exception as e:
                 print(f"Error importing node module {name}: {e}")
@@ -60,14 +60,23 @@ class NodeEngine:
             all_node_definitions.append(node_def)
         return json.dumps(all_node_definitions, indent=2)
 
-    async def run_workflow(self, graph_data, start_node_id, websocket):
-        await websocket.send_text("Engine: Initializing workflow...")
-        print("\n--- NEW WORKFLOW RUN ---")
+    async def run_workflow(self, graph_data, start_node_id, websocket, run_id, initial_payload=None):
+        
+        async def send_engine_log(message):
+            log_message = {
+                "type": "engine_log",
+                "run_id": run_id,
+                "message": message
+            }
+            await websocket.send_text(json.dumps(log_message))
+
+        await send_engine_log("Engine: Initializing workflow...")
+        print(f"\n--- NEW WORKFLOW RUN (ID: {run_id}) ---")
 
         # 1. --- Initialization ---
         node_memory = defaultdict(dict)
         nodes_map = {
-            str(n['id']): self.node_classes[n['type'].split('/')[-1]](self, n, node_memory[str(n['id'])])
+            str(n['id']): self.node_classes[n['type'].split('/')[-1]](self, n, node_memory[str(n['id'])], run_id)
             for n in graph_data['nodes'] if n['type'].split('/')[-1] in self.node_classes
         }
 
@@ -77,7 +86,12 @@ class NodeEngine:
 
         for node in nodes_map.values():
             node.load()
-        await websocket.send_text("Engine: All nodes loaded.")
+        await send_engine_log("Engine: All nodes loaded.")
+
+        # Inject the initial payload into the start node's memory if provided.
+        if initial_payload is not None and start_node_id in node_memory:
+            node_memory[start_node_id]['initial_payload'] = initial_payload
+            print(f"LOG: Injected initial payload into memory for start node {start_node_id}.")
 
         # 2. --- Context Setup ---
         run_context = {
@@ -148,7 +162,7 @@ class NodeEngine:
 
                 node_instance = run_context["nodes"][node_id]
                 run_context["node_states"][node_id] = "WAITING"
-                await websocket.send_text(f"Preparing: {node_instance.__class__.__name__}")
+                await send_engine_log(f"Preparing: {node_instance.__class__.__name__}")
 
                 node_data = next((n for n in graph_data['nodes'] if str(n['id']) == node_id), None)
                 if not node_data or 'inputs' not in node_data: return
@@ -219,7 +233,7 @@ class NodeEngine:
                     kwargs[base_name] = [v for i, v in values]
                 
                 run_context["node_states"][node_id] = "EXECUTING"
-                await websocket.send_text(f"Executing: {node_instance.__class__.__name__}")
+                await send_engine_log(f"Executing: {node_instance.__class__.__name__}")
                 print(f"LOG: Executing {node_id} with grouped inputs: {kwargs}")
 
                 try:
@@ -242,7 +256,7 @@ class NodeEngine:
                     if node_outputs: await push_to_downstream(node_id, node_outputs)
                 except Exception as e:
                     error_msg = f"Error in {node_instance.__class__.__name__}: {e}"
-                    await websocket.send_text(error_msg)
+                    await send_engine_log(error_msg)
                     print(f"Execution Error: {error_msg}")
                     import traceback; traceback.print_exc()
                     run_context["node_states"][node_id] = "ERROR"
@@ -324,21 +338,21 @@ class NodeEngine:
 
             # --- Workflow Kick-off ---
             if start_node_id in nodes_map:
-                print(f"--- KICKING OFF WORKFLOW FROM START NODE {start_node_id} ---")
+                print(f"--- KICKING OFF WORKFLOW FROM START NODE {start_node_id} (ID: {run_id}) ---")
                 main_task = asyncio.create_task(trigger_node(start_node_id))
                 run_context["active_tasks"].add(main_task)
                 while run_context["active_tasks"]:
                     done, pending = await asyncio.wait(run_context["active_tasks"], return_when=asyncio.FIRST_COMPLETED)
                     run_context["active_tasks"] = pending
             else:
-                await websocket.send_text(f"Error: Start node {start_node_id} not found.")
+                await send_engine_log(f"Error: Start node {start_node_id} not found.")
                 return
             
-            await websocket.send_text("Engine: Workflow finished.")
-            print("--- WORKFLOW RUN FINISHED ---\n")
+            await send_engine_log("Engine: Workflow finished.")
+            print(f"--- WORKFLOW RUN FINISHED (ID: {run_id}) ---\n")
 
         except asyncio.CancelledError:
-            print("--- WORKFLOW CANCELLED BY USER ---")
+            print(f"--- WORKFLOW CANCELLED BY USER (ID: {run_id}) ---")
             # Cancel all lingering tasks
             for task in run_context["active_tasks"]:
                 task.cancel()
@@ -346,12 +360,12 @@ class NodeEngine:
             if run_context["active_tasks"]:
                 await asyncio.gather(*run_context["active_tasks"], return_exceptions=True)
             
-            await websocket.send_text("Engine: Workflow stopped by user.")
-            print("--- WORKFLOW CANCELLATION COMPLETE ---\n")
+            await send_engine_log("Engine: Workflow stopped by user.")
+            print(f"--- WORKFLOW CANCELLATION COMPLETE (ID: {run_id}) ---\n")
         
         except Exception as e:
             # Catch any other unexpected errors during the main workflow execution
-            print(f"--- UNEXPECTED WORKFLOW ERROR: {e} ---")
+            print(f"--- UNEXPECTED WORKFLOW ERROR (ID: {run_id}): {e} ---")
             import traceback; traceback.print_exc()
-            await websocket.send_text(f"Engine: A critical error occurred: {e}")
-            print("--- WORKFLOW TERMINATED DUE TO ERROR ---\n")
+            await send_engine_log(f"Engine: A critical error occurred: {e}")
+            print(f"--- WORKFLOW TERMINATED DUE TO ERROR (ID: {run_id}) ---\n")

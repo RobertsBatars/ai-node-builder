@@ -523,6 +523,140 @@ class LoggingProcessorNode(BaseNode):
 - **Check the Frontend**: Remember that the `widget_type` you specify in the backend must have a corresponding implementation in `web/index.html` to render correctly.
 
 
+# 11. Advanced Feature: Creating Event Nodes
+
+Event nodes are a special category of nodes that, instead of being triggered by an input, listen for an external event (like a webhook or a message queue) and start a new workflow run when that event occurs. This enables powerful features like parallel workflow execution and integration with external systems.
+
+### The `EventNode` Class
+
+To create an event node, your class must inherit from `core.definitions.EventNode`. This class is an Abstract Base Class, just like `BaseNode`, but it enforces a different contract.
+
+-   **Inheritance**: `class MyEventNode(EventNode):`
+-   **Discovery**: The engine discovers `EventNode`s just like regular nodes. However, they are handled by a special `EventManager` in the backend.
+
+### The `EventNode` Contract
+
+When you inherit from `EventNode`, you **must** implement two new `async` methods:
+
+1.  `async def start_listening(self, trigger_workflow_callback)`:
+    *   This method is called by the `EventManager` when the user clicks "Listen for Events" in the UI.
+    *   Your job is to start the process that listens for the external event (e.g., start an HTTP server, connect to a message broker).
+    *   Crucially, you are given a `trigger_workflow_callback` function. When your event occurs, you **must call this function** to tell the engine to start the workflow.
+
+2.  `async def stop_listening(self)`:
+    *   This method is called when the user clicks "Stop Listening" or disconnects.
+    *   Your job is to cleanly shut down your listener (e.g., stop the server, close the connection).
+
+### The `trigger_workflow_callback`
+
+This callback function is the key to the whole system. It's an `async` function that you call from your listener. It accepts one argument:
+
+-   `payload`: The data from your event that you want to inject into the workflow. This can be any object, but it's often a string or a dictionary.
+
+### Injecting Event Data into the Workflow
+
+When you call `trigger_workflow_callback(payload)`, the engine does something special:
+1.  It starts a new run of the workflow, beginning at your `EventNode`.
+2.  It takes the `payload` you provided and injects it into your node's `self.memory` dictionary under the key `'initial_payload'`.
+
+Your `EventNode`'s `execute()` method can then retrieve this data from memory and pass it to its output socket, making it available to the rest of the workflow.
+
+### Example: A Simple `WebhookNode`
+
+Let's look at a practical example: a node that listens for an HTTP POST request and uses the request body as the data for the workflow.
+
+```python
+# in a file like nodes/event_nodes.py
+import asyncio
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+import json
+from core.definitions import EventNode, SocketType, InputWidget
+
+class WebhookNode(EventNode):
+    CATEGORY = "Events"
+    OUTPUT_SOCKETS = { "received_data": {"type": SocketType.TEXT} }
+
+    port = InputWidget(widget_type="NUMBER", default=8181)
+    path = InputWidget(widget_type="TEXT", default="/webhook")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.server = None
+        self.server_thread = None
+        self.loop = None
+
+    def load(self):
+        """Capture the main asyncio event loop."""
+        self.loop = asyncio.get_running_loop()
+
+    async def start_listening(self, trigger_workflow_callback):
+        """Start the HTTP server in a separate thread."""
+        port_val = int(self.widget_values.get('port', self.port.default))
+        path_val = self.widget_values.get('path', self.path.default)
+
+        # Create a handler factory that passes the loop and callback to the handler
+        def make_handler(*args, **kwargs):
+            return WebhookRequestHandler(self.loop, trigger_workflow_callback, path_val, *args, **kwargs)
+
+        self.server = HTTPServer(('', port_val), make_handler)
+        self.server_thread = threading.Thread(target=self.server.serve_forever)
+        self.server_thread.daemon = True
+        self.server_thread.start()
+        print(f"Webhook server started on http://localhost:{port_val}{path_val}")
+
+    async def stop_listening(self):
+        """Shutdown the HTTP server cleanly."""
+        if self.server:
+            self.server.shutdown()
+            self.server.server_close()
+            self.server_thread.join()
+            print("Webhook server stopped.")
+
+    def execute(self, *args, **kwargs):
+        """
+        Called when the workflow starts. It retrieves the payload injected
+        by the engine and returns it on the output socket.
+        """
+        payload = self.memory.get('initial_payload', "")
+        return (payload,)
+
+class WebhookRequestHandler(BaseHTTPRequestHandler):
+    def __init__(self, loop, trigger_callback, configured_path, *args, **kwargs):
+        self.loop = loop
+        self.trigger_callback = trigger_callback
+        self.configured_path = configured_path
+        super().__init__(*args, **kwargs)
+
+    def do_POST(self):
+        if self.path == self.configured_path:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            payload_str = post_data.decode('utf-8')
+
+            # This is the critical part: call the async callback from our server thread,
+            # passing the received data as the payload.
+            asyncio.run_coroutine_threadsafe(self.trigger_callback(payload_str), self.loop)
+
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"status": "ok"}')
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        return # Suppress console logging
+```
+
+### Key Takeaways for Event Nodes
+-   Inherit from `EventNode`.
+-   Implement `async def start_listening(self, trigger_workflow_callback)` to start your listener.
+-   Implement `async def stop_listening(self)` to clean up.
+-   When your event happens, call `trigger_workflow_callback(payload)` to start the workflow.
+-   In your `execute()` method, get the data from `self.memory.get('initial_payload')` and return it on an output socket.
+-   If your listener runs in a separate thread (like the `HTTPServer`), you must use `asyncio.run_coroutine_threadsafe(coro, loop)` to safely call the async callback on the main event loop.
+
 By following this guide, you can extend the AI Node Builder with powerful, custom functionality. Happy building!
 
 

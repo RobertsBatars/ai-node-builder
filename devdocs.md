@@ -108,13 +108,44 @@ To support long-running tasks (like API calls or timed waits) without freezing t
     3.  **Cancellation**: The server retrieves the running task associated with the user's session and calls `task.cancel()`.
     4.  **Graceful Shutdown**: This raises an `asyncio.CancelledError` inside the `run_workflow` function. The engine catches this specific error, cancels all of its own child tasks (the individual `active_tasks` for each node), and sends a final "Workflow stopped" message to the UI. This ensures the workflow is terminated cleanly without leaving orphaned processes.
 
+### **3.7. Event-Driven Architecture and Parallel Workflows**
+
+To move beyond a single, user-initiated workflow, an event-driven architecture was introduced. This allows the application to listen for external events (like a webhook) and trigger new workflow runs in parallel, without interfering with the main, user-driven workflow.
+
+*   **The `EventManager`**: A new `core/event_manager.py` module was created to handle all event-related logic. This keeps the main `NodeEngine` focused purely on workflow execution.
+    *   For each connected client, the server creates a dedicated `EventManager` instance.
+    *   When the user clicks "Listen for Events" in the UI, the server identifies special `EventNode` instances in the graph and instructs the client's `EventManager` to start them.
+    *   Each `EventNode` runs its own listener (e.g., an HTTP server in a separate thread). When an event is detected, the node calls a callback function provided by the `EventManager`.
+    *   This callback then instructs the main `NodeEngine` to start a *new* workflow run, beginning from the `EventNode` that caught the event.
+
+*   **Parallel Execution with `run_id`**:
+    *   The `run_workflow` method in the `NodeEngine` was modified to accept a `run_id`.
+    *   The workflow started by the user's "RUN" button is given a predictable ID: `"frontend_run"`.
+    *   Workflows started by the `EventManager` are given a unique ID (e.g., `"event_..."`).
+    *   This `run_id` is included in all messages sent to the frontend, allowing the UI to distinguish between logs from the main workflow and logs from parallel, event-driven workflows. This is crucial for managing the UI state, as only the completion of the `"frontend_run"` workflow should re-enable the main "RUN" button.
+
+*   **Data Injection for Events**:
+    *   To make event nodes useful, a mechanism was created to inject data from the event into the workflow.
+    *   The `run_workflow` method now accepts an `initial_payload`.
+    *   When the `EventManager` triggers a workflow, it can pass the data received by the event (e.g., the body of a webhook POST request) as this `initial_payload`.
+    *   The engine then places this payload into the `self.memory` dictionary of the starting event node under the key `'initial_payload'`, making it immediately available to the node's `execute` method.
+
+*   **Server State Management**:
+    *   The server (`core/server.py`) was significantly updated to manage the more complex state. It now tracks multiple workflow tasks and `EventManager` instances per client, ensuring that all processes are correctly started and cleaned up, even on unexpected disconnects.
+
 ## **4. Node Implementation and Framework (Successful Components)**
 
-### **4.1. The BaseNode Abstract Class**
+### **4.1. The BaseNode and EventNode Abstract Classes**
 
-The foundation of the framework is the BaseNode class, which is an **Abstract Base Class (ABC)**.
+The foundation of the framework is the `BaseNode` class, which is an **Abstract Base Class (ABC)**.
 
-* **Why an ABC?** This Python feature acts as a strict contract. It enforces that every new node *must* implement the required load() and execute() methods, preventing incomplete nodes from being loaded and ensuring a consistent structure across the application.
+* **Why an ABC?** This Python feature acts as a strict contract. It enforces that every new node *must* implement the required `load()` and `execute()` methods, preventing incomplete nodes from being loaded and ensuring a consistent structure across the application.
+
+To support the event-driven model, a new `EventNode` ABC was introduced, inheriting from `BaseNode`. It adds a new contract for nodes that are intended to start workflows:
+*   `async def start_listening(self, trigger_workflow_callback)`
+*   `async def stop_listening(self)`
+
+This ensures that the `EventManager` can reliably manage the lifecycle of any event-based node.
 
 ### **4.2. Dynamic UI Definition from Code**
 

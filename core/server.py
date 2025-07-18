@@ -3,16 +3,30 @@
 
 import json
 import asyncio
+import uuid
+from collections import defaultdict
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
+
 from core.engine import NodeEngine
+from core.event_manager import EventManager
+from core.definitions import EventNode
 
 # Initialize the main FastAPI application and the Node Engine
 app = FastAPI()
 engine = NodeEngine()
 
-# A dictionary to keep track of the running workflow task for each client
-active_workflows = {}
+# --- Global State Management ---
+# These dictionaries manage the state for all connected clients.
+# A client is identified by their WebSocket object.
+
+# {run_id: asyncio.Task} - Keeps track of all running workflow tasks globally.
+active_workflows = {} 
+# {websocket: {run_id_1, run_id_2, ...}} - Maps each client to their set of active run_ids.
+client_tasks = defaultdict(set)
+# {websocket: EventManager} - Maps each client to their dedicated EventManager instance.
+event_managers = {}
+
 
 @app.get("/")
 async def get_frontend():
@@ -30,46 +44,93 @@ async def get_nodes():
 async def websocket_endpoint(websocket: WebSocket):
     """Handles the real-time communication with the frontend."""
     await websocket.accept()
+    # Create and store an EventManager for this client session
+    event_managers[websocket] = EventManager(engine, websocket)
 
-    def on_task_done(task):
-        """Callback to remove the task from the active workflows."""
-        if websocket in active_workflows:
-            del active_workflows[websocket]
-        print(f"Task for client {websocket.client} finished and removed.")
+    def on_task_done(run_id, ws):
+        """Callback to clean up a finished task."""
+        task = active_workflows.pop(run_id, None)
+        if task:
+            print(f"Task {run_id} finished and removed from global registry.")
+        if ws in client_tasks and run_id in client_tasks[ws]:
+            client_tasks[ws].remove(run_id)
+            print(f"Task {run_id} removed from client {ws.client}.")
 
     try:
         while True:
             data = await websocket.receive_json()
             action = data.get("action")
+            graph_data = data.get("graph")
 
             if action == "run":
-                # If a workflow is already running for this client, stop it first.
-                if websocket in active_workflows:
-                    active_workflows[websocket].cancel()
-                    del active_workflows[websocket]
+                run_id = "frontend_run"
+                # If a frontend-initiated workflow is already running, cancel it before starting a new one.
+                if websocket in client_tasks and run_id in client_tasks[websocket]:
+                    if run_id in active_workflows:
+                        active_workflows[run_id].cancel()
 
-                graph_data = data.get("graph")
                 start_node_id = data.get("start_node_id")
                 if start_node_id is None:
-                    await websocket.send_text("Error: No start node selected.")
+                    await websocket.send_text(json.dumps({"type": "error", "message": "No start node selected."}))
                     continue
 
-                # Create a new task for the workflow and store it
-                task = asyncio.create_task(engine.run_workflow(graph_data, str(start_node_id), websocket))
-                task.add_done_callback(on_task_done)
-                active_workflows[websocket] = task
+                task = asyncio.create_task(engine.run_workflow(graph_data, str(start_node_id), websocket, run_id))
+                active_workflows[run_id] = task
+                client_tasks[websocket].add(run_id)
+                task.add_done_callback(lambda t: on_task_done(run_id, websocket))
 
             elif action == "stop":
-                if websocket in active_workflows:
-                    await websocket.send_text("Engine: Stopping workflow...")
-                    active_workflows[websocket].cancel()
-                    # The task will be removed by the on_task_done callback
+                if websocket in client_tasks:
+                    await websocket.send_text(json.dumps({"type": "engine_log", "run_id": "all", "message": "Stopping all workflows for this client..."}))
+                    # Create a copy of the set to iterate over, as it will be modified
+                    for run_id in list(client_tasks[websocket]):
+                        if run_id in active_workflows:
+                            active_workflows[run_id].cancel()
+                    # The on_task_done callback will handle cleanup
                 else:
-                    await websocket.send_text("Engine: No workflow is currently running.")
+                    await websocket.send_text(json.dumps({"type": "engine_log", "run_id": "none", "message": "No workflows are currently running."}))
+
+            elif action == "start_listening":
+                if not graph_data:
+                    await websocket.send_text(json.dumps({"type": "error", "message": "Graph data is required to start listening."}))
+                    continue
+                
+                # Instantiate all nodes to find the event nodes
+                all_nodes = [
+                    engine.node_classes[n['type'].split('/')[-1]](engine, n, {}, None)
+                    for n in graph_data['nodes'] if n['type'].split('/')[-1] in engine.node_classes
+                ]
+                event_nodes = [node for node in all_nodes if isinstance(node, EventNode)]
+
+                if not event_nodes:
+                    await websocket.send_text(json.dumps({"type": "engine_log", "run_id": "events", "message": "No event nodes found in the graph."}))
+                    continue
+
+                manager = event_managers[websocket]
+                # The manager's start_listeners now needs to handle the task creation and tracking
+                await manager.start_listeners(event_nodes, graph_data, active_workflows, client_tasks[websocket])
+                await websocket.send_text(json.dumps({"type": "engine_log", "run_id": "events", "message": "Now listening for events."}))
+
+
+            elif action == "stop_listening":
+                manager = event_managers.get(websocket)
+                if manager:
+                    await manager.stop_listeners()
+                await websocket.send_text(json.dumps({"type": "engine_log", "run_id": "events", "message": "Stopped listening for events."}))
+
 
     except WebSocketDisconnect:
-        # If the client disconnects, cancel their running task
-        if websocket in active_workflows:
-            active_workflows[websocket].cancel()
-            del active_workflows[websocket]
-        print(f"Client {websocket.client} disconnected. Any running workflow has been stopped.")
+        print(f"Client {websocket.client} disconnected.")
+        # If the client disconnects, cancel all their running tasks
+        if websocket in client_tasks:
+            for run_id in client_tasks[websocket]:
+                if run_id in active_workflows:
+                    active_workflows[run_id].cancel()
+            del client_tasks[websocket]
+        
+        # Stop any active listeners for the disconnected client
+        manager = event_managers.pop(websocket, None)
+        if manager:
+            await manager.stop_listeners()
+        
+        print(f"All tasks and listeners for client {websocket.client} have been stopped.")
