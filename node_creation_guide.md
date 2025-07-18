@@ -513,17 +513,7 @@ class LoggingProcessorNode(BaseNode):
 
 ---
 
-## 10. Best Practices and Considerations
-
-- **Keep Nodes Atomic**: Each node should perform a single, clear task. Instead of one giant node that does three things, create three smaller nodes. This makes your workflows more flexible and easier to debug.
-- **Initialize Memory**: When using stateful nodes, it is best practice to initialize all expected keys for `self.memory` in the `load()` method. This prevents potential `KeyError` exceptions and makes the node's expected state clear.
-- **Handle Missing Inputs**: In your `execute` method, consider what should happen if an optional input is not connected. The argument will be `None` in that case.
-- **Return a Tuple**: The `execute` method **must** return a tuple for its outputs, even if there is only one. For a single output, return `(my_value,)`. For no outputs, return `()`. To conditionally prevent an output from firing, return the `SKIP_OUTPUT` object in its place in the tuple.
-- **Clear Naming**: Use descriptive names for your node class, sockets, and widgets. This makes the system easier to use for everyone.
-- **Check the Frontend**: Remember that the `widget_type` you specify in the backend must have a corresponding implementation in `web/index.html` to render correctly.
-
-
-# 11. Advanced Feature: Creating Event Nodes
+## 10. Advanced Feature: Creating Event Nodes
 
 Event nodes are a special category of nodes that, instead of being triggered by an input, listen for an external event (like a webhook or a message queue) and start a new workflow run when that event occurs. This enables powerful features like parallel workflow execution and integration with external systems.
 
@@ -656,6 +646,18 @@ class WebhookRequestHandler(BaseHTTPRequestHandler):
 -   When your event happens, call `trigger_workflow_callback(payload)` to start the workflow.
 -   In your `execute()` method, get the data from `self.memory.get('initial_payload')` and return it on an output socket.
 -   If your listener runs in a separate thread (like the `HTTPServer`), you must use `asyncio.run_coroutine_threadsafe(coro, loop)` to safely call the async callback on the main event loop.
+
+---
+
+## 11. Best Practices and Considerations
+
+- **Keep Nodes Atomic**: Each node should perform a single, clear task. Instead of one giant node that does three things, create three smaller nodes. This makes your workflows more flexible and easier to debug.
+- **Initialize Memory**: When using stateful nodes, it is best practice to initialize all expected keys for `self.memory` in the `load()` method. This prevents potential `KeyError` exceptions and makes the node's expected state clear.
+- **Handle Missing Inputs**: In your `execute` method, consider what should happen if an optional input is not connected. The argument will be `None` in that case.
+- **Return a Tuple**: The `execute` method **must** return a tuple for its outputs, even if there is only one. For a single output, return `(my_value,)`. For no outputs, return `()`. To conditionally prevent an output from firing, return the `SKIP_OUTPUT` object in its place in the tuple.
+- **Clear Naming**: Use descriptive names for your node class, sockets, and widgets. This makes the system easier to use for everyone.
+- **Check the Frontend**: Remember that the `widget_type` you specify in the backend must have a corresponding implementation in `web/index.html` to render correctly.
+
 
 By following this guide, you can extend the AI Node Builder with powerful, custom functionality. Happy building!
 
