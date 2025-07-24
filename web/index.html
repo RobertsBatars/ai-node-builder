@@ -67,6 +67,18 @@
             border-bottom: 1px solid #444;
         }
         
+        #log-filters {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .log-filter-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
         #log-content {
             padding: 10px;
             height: calc(100% - 36px);
@@ -76,6 +88,10 @@
             margin: 4px 0;
             padding: 4px 0;
             border-bottom: 1px solid #3a3a3a;
+        }
+        
+        .log-message.hidden {
+            display: none;
         }
         
         .log-timestamp {
@@ -132,7 +148,29 @@
     <div id="log-panel">
         <div id="log-header">
             <div>Execution Logs</div>
-            <button id="clear-log-button" class="top-button">Clear</button>
+            <div id="log-filters">
+                <div class="log-filter-checkbox">
+                    <input type="checkbox" id="filter-engine" checked>
+                    <label for="filter-engine">Engine</label>
+                </div>
+                <div class="log-filter-checkbox">
+                    <input type="checkbox" id="filter-log" checked>
+                    <label for="filter-log">Log</label>
+                </div>
+                <div class="log-filter-checkbox">
+                    <input type="checkbox" id="filter-debug" checked>
+                    <label for="filter-debug">Debug</label>
+                </div>
+                <div class="log-filter-checkbox">
+                    <input type="checkbox" id="filter-test" checked>
+                    <label for="filter-test">Test</label>
+                </div>
+                <div class="log-filter-checkbox">
+                    <input type="checkbox" id="filter-error" checked>
+                    <label for="filter-error">Error</label>
+                </div>
+                <button id="clear-log-button" class="top-button">Clear</button>
+            </div>
         </div>
         <div id="log-content"></div>
     </div>
@@ -151,6 +189,13 @@
             const logPanel = document.getElementById('log-panel');
             const logContent = document.getElementById('log-content');
             
+            // Filter checkboxes
+            const filterEngine = document.getElementById('filter-engine');
+            const filterLog = document.getElementById('filter-log');
+            const filterDebug = document.getElementById('filter-debug');
+            const filterTest = document.getElementById('filter-test');
+            const filterError = document.getElementById('filter-error');
+            
             let logPanelVisible = false;
 
             const log = (message) => {
@@ -162,6 +207,7 @@
                 const timestamp = new Date().toLocaleTimeString();
                 const logEntry = document.createElement('div');
                 logEntry.className = 'log-message';
+                logEntry.dataset.type = type; // Store the message type for filtering
                 
                 let typeClass = 'log-type-engine';
                 switch (type) {
@@ -192,7 +238,48 @@
                 
                 logContent.appendChild(logEntry);
                 logContent.scrollTop = logContent.scrollHeight;
+                
+                // Apply filtering
+                applyLogFilters();
             };
+            
+            // Apply filters to show/hide log messages
+            const applyLogFilters = () => {
+                const logEntries = logContent.querySelectorAll('.log-message');
+                logEntries.forEach(entry => {
+                    const type = entry.dataset.type;
+                    let isVisible = false;
+                    
+                    switch (type) {
+                        case 'engine':
+                            isVisible = filterEngine.checked;
+                            break;
+                        case 'log':
+                            isVisible = filterLog.checked;
+                            break;
+                        case 'debug':
+                            isVisible = filterDebug.checked;
+                            break;
+                        case 'test':
+                            isVisible = filterTest.checked;
+                            break;
+                        case 'error':
+                            isVisible = filterError.checked;
+                            break;
+                        default:
+                            isVisible = true; // Show unknown types by default
+                    }
+                    
+                    entry.classList.toggle('hidden', !isVisible);
+                });
+            };
+            
+            // Add event listeners to filter checkboxes
+            filterEngine.addEventListener('change', applyLogFilters);
+            filterLog.addEventListener('change', applyLogFilters);
+            filterDebug.addEventListener('change', applyLogFilters);
+            filterTest.addEventListener('change', applyLogFilters);
+            filterError.addEventListener('change', applyLogFilters);
 
             const setWorkflowRunningState = (isRunning) => {
                 if (isRunning) {
@@ -223,6 +310,7 @@
                 toggleLogButton.textContent = logPanelVisible ? 'Hide Logs' : 'Show Logs';
                 if (logPanelVisible) {
                     logContent.scrollTop = logContent.scrollHeight;
+                    applyLogFilters(); // Apply filters when showing the panel
                 }
             });
             
