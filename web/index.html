@@ -37,8 +37,85 @@
         #load-button { background-color: #f44336; color: white; }
         #load-button:hover { background-color: #D32F2F; }
 
+        #toggle-log-button { background-color: #9c27b0; color: white; }
+        #toggle-log-button:hover { background-color: #7b1fa2; }
+
         .top-button.disabled { background-color: #555; cursor: not-allowed; }
         #status-log { margin-left: 10px; font-style: italic; color: #aaa; }
+        
+        #log-panel {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            max-height: 300px;
+            background-color: #2d2d2d;
+            border-top: 1px solid #444;
+            z-index: 5;
+            display: none;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        
+        #log-header {
+            padding: 8px 12px;
+            background-color: #3a3a3a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #444;
+        }
+        
+        #log-content {
+            padding: 10px;
+            height: calc(100% - 36px);
+        }
+        
+        .log-message {
+            margin: 4px 0;
+            padding: 4px 0;
+            border-bottom: 1px solid #3a3a3a;
+        }
+        
+        .log-timestamp {
+            color: #888;
+            margin-right: 8px;
+        }
+        
+        .log-type {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+            margin-right: 8px;
+            text-transform: uppercase;
+        }
+        
+        .log-type-engine {
+            background-color: #2196F3;
+        }
+        
+        .log-type-log {
+            background-color: #4CAF50;
+        }
+        
+        .log-type-debug {
+            background-color: #FF9800;
+        }
+        
+        .log-type-test {
+            background-color: #9C27B0;
+        }
+        
+        .log-type-error {
+            background-color: #f44336;
+        }
+        
+        .log-node-info {
+            color: #BB86FC;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -49,7 +126,15 @@
         <button id="stop-listen-button" class="top-button">Stop Listening</button>
         <button id="save-button" class="top-button">Save</button>
         <button id="load-button" class="top-button">Load</button>
+        <button id="toggle-log-button" class="top-button">Show Logs</button>
         <div id="status-log">Status: Disconnected</div>
+    </div>
+    <div id="log-panel">
+        <div id="log-header">
+            <div>Execution Logs</div>
+            <button id="clear-log-button" class="top-button">Clear</button>
+        </div>
+        <div id="log-content"></div>
     </div>
     <canvas id='main-canvas'></canvas>
     <script>
@@ -61,10 +146,52 @@
             const stopListenButton = document.getElementById('stop-listen-button');
             const saveButton = document.getElementById('save-button');
             const loadButton = document.getElementById('load-button');
+            const toggleLogButton = document.getElementById('toggle-log-button');
+            const clearLogButton = document.getElementById('clear-log-button');
+            const logPanel = document.getElementById('log-panel');
+            const logContent = document.getElementById('log-content');
+            
+            let logPanelVisible = false;
 
             const log = (message) => {
                 console.log(message);
                 statusLog.textContent = `Status: ${message}`;
+            };
+            
+            const addLogMessage = (message, type = 'engine', nodeInfo = null) => {
+                const timestamp = new Date().toLocaleTimeString();
+                const logEntry = document.createElement('div');
+                logEntry.className = 'log-message';
+                
+                let typeClass = 'log-type-engine';
+                switch (type) {
+                    case 'log':
+                        typeClass = 'log-type-log';
+                        break;
+                    case 'debug':
+                        typeClass = 'log-type-debug';
+                        break;
+                    case 'test':
+                        typeClass = 'log-type-test';
+                        break;
+                    case 'error':
+                        typeClass = 'log-type-error';
+                        break;
+                }
+                
+                let nodeDisplay = '';
+                if (nodeInfo) {
+                    nodeDisplay = `<span class="log-node-info">${nodeInfo.name} (${nodeInfo.id})</span>: `;
+                }
+                
+                logEntry.innerHTML = `
+                    <span class="log-timestamp">[${timestamp}]</span>
+                    <span class="log-type ${typeClass}">${type}</span>
+                    ${nodeDisplay}${message}
+                `;
+                
+                logContent.appendChild(logEntry);
+                logContent.scrollTop = logContent.scrollHeight;
             };
 
             const setWorkflowRunningState = (isRunning) => {
@@ -88,6 +215,21 @@
                     stopListenButton.style.display = 'none';
                 }
             };
+            
+            // Toggle log panel visibility
+            toggleLogButton.addEventListener('click', () => {
+                logPanelVisible = !logPanelVisible;
+                logPanel.style.display = logPanelVisible ? 'block' : 'none';
+                toggleLogButton.textContent = logPanelVisible ? 'Hide Logs' : 'Show Logs';
+                if (logPanelVisible) {
+                    logContent.scrollTop = logContent.scrollHeight;
+                }
+            });
+            
+            // Clear log content
+            clearLogButton.addEventListener('click', () => {
+                logContent.innerHTML = '';
+            });
 
             const graph = new LGraph();
             const canvas = new LGraphCanvas("#main-canvas", graph);
@@ -109,8 +251,21 @@
 
                         if (data.source === 'node') {
                             // It's a message from a specific node (e.g., log, debug, test)
-                            // You can add custom handling here, e.g., display in a separate log panel
-                            console.log(`Node Message (run_id: ${data.run_id}):`, data.payload);
+                            const nodeInfo = {
+                                id: data.payload.node_id,
+                                name: data.payload.node_type
+                            };
+                            
+                            // Extract the message content from the payload data
+                            let message = '';
+                            if (data.payload.data && data.payload.data.message) {
+                                message = data.payload.data.message;
+                            } else {
+                                // Fallback for other data structures
+                                message = JSON.stringify(data.payload.data);
+                            }
+                            
+                            addLogMessage(message, data.type, nodeInfo);
                             return;
                         }
 
@@ -120,6 +275,17 @@
                             
                             // Add a prefix for event-driven runs to distinguish them in the log
                             const logPrefix = run_id === 'frontend_run' ? '' : `[Event Run ${run_id.substring(0, 6)}] `;
+                            
+                            // Create node info if available
+                            let nodeInfo = null;
+                            if (data.node_id) {
+                                nodeInfo = {
+                                    id: data.node_id,
+                                    name: data.node_name || "Unknown Node"
+                                };
+                            }
+                            
+                            addLogMessage(message, 'engine', nodeInfo);
                             log(logPrefix + message);
 
                             // The main "Run" button should only be re-enabled by the completion of the frontend-initiated workflow.
@@ -132,6 +298,7 @@
                         // Fallback for any non-JSON messages, though the backend should not send them anymore.
                         console.error("Received non-JSON message:", event.data);
                         log(event.data);
+                        addLogMessage(`Error parsing message: ${event.data}`, 'error');
                     }
                 };
                 

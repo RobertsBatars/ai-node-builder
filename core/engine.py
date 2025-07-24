@@ -61,13 +61,22 @@ class NodeEngine:
         return json.dumps(all_node_definitions, indent=2)
 
     async def run_workflow(self, graph_data, start_node_id, websocket, run_id, initial_payload=None):
+        # Create a mapping of node IDs to node names for better log messages
+        node_id_to_name = {
+            str(node['id']): node.get('title', node['type'].split('/')[-1]) 
+            for node in graph_data['nodes']
+        }
         
-        async def send_engine_log(message):
+        async def send_engine_log(message, node_id=None):
             log_message = {
                 "type": "engine_log",
                 "run_id": run_id,
                 "message": message
             }
+            # Include node information if provided
+            if node_id:
+                log_message["node_id"] = node_id
+                log_message["node_name"] = node_id_to_name.get(node_id, "Unknown Node")
             await websocket.send_text(json.dumps(log_message))
 
         await send_engine_log("Engine: Initializing workflow...")
@@ -84,8 +93,10 @@ class NodeEngine:
         for node in nodes_map.values():
             node._websocket = websocket
 
-        for node in nodes_map.values():
+        for node_id, node in nodes_map.items():
             node.load()
+            node_name = node_id_to_name.get(node_id, "Unknown Node")
+            await send_engine_log(f"Engine: Node '{node_name}' loaded.", node_id)
         await send_engine_log("Engine: All nodes loaded.")
 
         # Inject the initial payload into the start node's memory if provided.
@@ -123,8 +134,9 @@ class NodeEngine:
 
                 if node_state == "DONE":
                     node_instance = run_context["nodes"][node_id]
+                    node_name = node_id_to_name.get(node_id, "Unknown Node")
                     
-                    print(f"LOG: Resetting completed node {node_id} for re-trigger.")
+                    print(f"LOG: Resetting completed node {node_id} ({node_name}) for re-trigger.")
                     run_context["node_states"][node_id] = "PENDING"
                     node_state = "PENDING"
                     
@@ -138,7 +150,7 @@ class NodeEngine:
                     for key in keys_to_delete:
                         del cache[key]
                     
-                    print(f"LOG: Cleared waiting inputs for {node_id}. Waiting for: {run_context['waiting_on'][node_id]}")
+                    print(f"LOG: Cleared waiting inputs for {node_id} ({node_name}). Waiting for: {run_context['waiting_on'][node_id]}")
 
 
                 if node_state == "PENDING":
@@ -161,8 +173,9 @@ class NodeEngine:
                     return
 
                 node_instance = run_context["nodes"][node_id]
+                node_name = node_id_to_name.get(node_id, "Unknown Node")
                 run_context["node_states"][node_id] = "WAITING"
-                await send_engine_log(f"Preparing: {node_instance.__class__.__name__}")
+                await send_engine_log(f"Preparing: {node_name} ({node_instance.__class__.__name__})", node_id)
 
                 node_data = next((n for n in graph_data['nodes'] if str(n['id']) == node_id), None)
                 if not node_data or 'inputs' not in node_data: return
@@ -204,20 +217,22 @@ class NodeEngine:
                 
                 run_context["node_wait_configs"][node_id] = initial_wait_list
                 run_context["waiting_on"][node_id] = list(initial_wait_list)
-                print(f"LOG: Node {node_id} is WAITING for: {initial_wait_list}")
+                print(f"LOG: Node {node_id} ({node_name}) is WAITING for: {initial_wait_list}")
                 if dependency_tasks: await asyncio.gather(*dependency_tasks)
 
             async def process_incoming_data(node_id, push_datas):
+                node_name = node_id_to_name.get(node_id, "Unknown Node")
                 for push_data in push_datas:
                     target_input_name = push_data['target_input_name']
                     value = push_data['value']
                     run_context["input_cache"][node_id][target_input_name] = value
                     if target_input_name in run_context["waiting_on"][node_id]:
                         run_context["waiting_on"][node_id].remove(target_input_name)
-                print(f"LOG: Node {node_id} waiting for: {run_context['waiting_on'][node_id]}")
+                print(f"LOG: Node {node_id} ({node_name}) waiting for: {run_context['waiting_on'][node_id]}")
 
             async def execute_node(node_id):
                 node_instance = run_context["nodes"][node_id]
+                node_name = node_id_to_name.get(node_id, "Unknown Node")
                 kwargs, temp_cache = {}, run_context["input_cache"][node_id].copy()
                 array_inputs = defaultdict(list)
                 for input_name, value in temp_cache.items():
@@ -233,8 +248,8 @@ class NodeEngine:
                     kwargs[base_name] = [v for i, v in values]
                 
                 run_context["node_states"][node_id] = "EXECUTING"
-                await send_engine_log(f"Executing: {node_instance.__class__.__name__}")
-                print(f"LOG: Executing {node_id} with grouped inputs: {kwargs}")
+                await send_engine_log(f"Executing: {node_name} ({node_instance.__class__.__name__})", node_id)
+                print(f"LOG: Executing {node_id} ({node_name}) with grouped inputs: {kwargs}")
 
                 try:
                     # Check if the execute method is an async function
@@ -249,14 +264,14 @@ class NodeEngine:
                         node_outputs, state_update = result
                         if state_update.wait_for_inputs is not None:
                             run_context["node_wait_configs"][node_id] = state_update.wait_for_inputs
-                            print(f"LOG: Node {node_id} updated its wait config to: {state_update.wait_for_inputs}")
+                            print(f"LOG: Node {node_id} ({node_name}) updated its wait config to: {state_update.wait_for_inputs}")
 
                     run_context["node_states"][node_id] = "DONE"
                     run_context["outputs_cache"][node_id] = node_outputs
                     if node_outputs: await push_to_downstream(node_id, node_outputs)
                 except Exception as e:
-                    error_msg = f"Error in {node_instance.__class__.__name__}: {e}"
-                    await send_engine_log(error_msg)
+                    error_msg = f"Error in {node_name} ({node_instance.__class__.__name__}): {e}"
+                    await send_engine_log(error_msg, node_id)
                     print(f"Execution Error: {error_msg}")
                     import traceback; traceback.print_exc()
                     run_context["node_states"][node_id] = "ERROR"
