@@ -424,6 +424,9 @@
                                 contextGraphHash = null;
                                 redrawAllDisplayMessages();
                                 break;
+                            case 'graph_hash_updated':
+                                contextGraphHash = data.payload.graph_hash;
+                                break;
                         }
 
                     } catch (e) {
@@ -645,8 +648,8 @@
             });
 
             saveDisplayBtn.addEventListener("click", () => {
-                // REVERT: Save only the context, without the hash.
-                const data = JSON.stringify({ context: localDisplayContext }, null, 2);
+                // Save both the context and the graph hash
+                const data = JSON.stringify({ context: localDisplayContext, graph_hash: contextGraphHash }, null, 2);
                 const blob = new Blob([data], { type: "application/json" });
                 const a = document.createElement("a");
                 a.href = URL.createObjectURL(blob);

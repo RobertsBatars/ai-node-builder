@@ -19,7 +19,9 @@ engine = NodeEngine()
 # --- Global State Management ---
 GLOBAL_DISPLAY_STATE = {
     "display_context": [],
-    "graph_hash": None
+    "graph_hash": None,
+    "initial_graph_hash": None,
+    "previous_graph_hash": None
 }
 ACTIVE_WEBSOCKET = None
 
@@ -91,6 +93,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 loaded_data = data.get("payload", {})
                 GLOBAL_DISPLAY_STATE["display_context"] = loaded_data.get("context", [])
                 GLOBAL_DISPLAY_STATE["graph_hash"] = loaded_data.get("graph_hash")
+                # Set the initial_graph_hash when loading a saved context with a hash
+                if loaded_data.get("graph_hash"):
+                    GLOBAL_DISPLAY_STATE["initial_graph_hash"] = loaded_data.get("graph_hash")
                 await broadcast_to_frontend({
                     "type": "display_context_state",
                     "payload": GLOBAL_DISPLAY_STATE
@@ -99,8 +104,10 @@ async def websocket_endpoint(websocket: WebSocket):
             elif action == "clear_display_context":
                 GLOBAL_DISPLAY_STATE["display_context"].clear()
                 # Reset the hash and warning flags as well
-                GLOBAL_DISPLAY_STATE.pop("initial_graph_hash", None)
+                GLOBAL_DISPLAY_STATE["initial_graph_hash"] = None
+                GLOBAL_DISPLAY_STATE["previous_graph_hash"] = None
                 GLOBAL_DISPLAY_STATE.pop("warning_issued", None)
+                GLOBAL_DISPLAY_STATE["graph_hash"] = None
                 await broadcast_to_frontend({"type": "display_context_cleared"})
 
             elif action == "run":

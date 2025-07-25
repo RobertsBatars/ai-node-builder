@@ -42,7 +42,7 @@ class DisplayOutputNode(BaseNode):
         # 1. Append the message to the global server-side context
         self.global_state['display_context'].append(context_entry)
         
-        # 2. Send the message to the client for immediate display
+        # 3. Send the message to the client for immediate display
         await self.send_message_to_client(MessageType.DISPLAY, display_payload)
         
         return ()

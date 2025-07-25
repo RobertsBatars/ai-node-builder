@@ -143,9 +143,10 @@ To provide a more persistent, chat-like interface for workflows, a global "Displ
 
 *   **Workflow Change Detection**: A key challenge is ensuring the user is aware that a saved context might not be relevant to a modified workflow.
     1.  **Structural Hashing**: The engine (`core/engine.py`) generates a SHA256 hash of the workflow's structure (node types and their connections, ignoring cosmetic details like node positions).
-    2.  **Initial Hash Storage**: When the *first* message is added to a currently empty display context, the engine stores the current workflow's hash in the `GLOBAL_DISPLAY_STATE` as the `initial_graph_hash`.
-    3.  **Verification on Run**: On every subsequent workflow run, the engine generates a new hash of the current graph. It compares this new hash to the `initial_graph_hash`.
-    4.  **Warning Injection**: If the hashes do not match, the engine injects a special "warning" message into the display context. This message is rendered differently in the UI, immediately alerting the user that the context may be from a different version of the workflow and that node-based filtering might be unreliable. This warning is re-injected on every run of the modified workflow until the context is cleared.
+    2.  **Initial Hash Storage**: The engine tracks the hash from previous workflow runs in `previous_graph_hash`. When the display context first becomes populated (transitions from empty to non-empty), the engine sets `initial_graph_hash` to the previous workflow's hash, preserving the workflow state that created the context.
+    3.  **Verification on Run**: On every workflow run, the engine generates a new hash of the current graph and compares it to the `initial_graph_hash`. The current hash is also sent to the frontend and stored for context saving.
+    4.  **Warning Injection**: If the hashes do not match, the engine injects a special "warning" message into the display context. This message is rendered differently in the UI, immediately alerting the user that the context may be from a different version of the workflow and that node-based filtering might be unreliable. This warning appears on the first workflow change and continues on every subsequent run until the context is cleared.
+    5.  **Context Persistence**: When saving context to a file, both the display messages and the graph hash are preserved. When loading, the `initial_graph_hash` is restored, maintaining change detection across save/load cycles.
 
 *   **State Management**: The server provides WebSocket actions to `get_initial_context`, `load_display_context` from a file, and `clear_display_context`. Clearing the context also resets the `initial_graph_hash` and the warning flags, allowing a new session to begin.
 

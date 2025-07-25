@@ -81,14 +81,19 @@ class NodeEngine:
         is_context_populated = bool(global_state.get("display_context"))
         initial_hash = global_state.get("initial_graph_hash")
 
-        # If the context is not empty but has no initial hash, it means this is the first run
-        # in a new "session". We set the hash now.
+        # Set the initial hash when the context first becomes populated
+        # We store the hash from the PREVIOUS run, not the current one
         if is_context_populated and not initial_hash:
-            global_state['initial_graph_hash'] = current_hash
-            initial_hash = current_hash
-
-        # If the context is populated and the hash mismatches, issue a warning.
-        # We no longer use 'warning_issued' to ensure the warning is sent on every subsequent run.
+            # Check if we have a previous hash stored
+            previous_hash = global_state.get("previous_graph_hash")
+            if previous_hash:
+                global_state['initial_graph_hash'] = previous_hash
+                initial_hash = previous_hash
+        
+        # Store current hash as previous for next run
+        global_state["previous_graph_hash"] = current_hash
+        
+        # If the context is populated and we have an initial hash, compare it with current hash
         if is_context_populated and initial_hash and current_hash != initial_hash:
             warning_msg = {
                 "node_id": None,
@@ -121,6 +126,12 @@ class NodeEngine:
 
         await send_engine_log("Engine: Initializing workflow...")
         print(f"\n--- NEW WORKFLOW RUN (ID: {run_id}) ---")
+        
+        # Send the current graph hash to the frontend
+        await self.broadcast({
+            "type": "graph_hash_updated",
+            "payload": {"graph_hash": current_hash}
+        })
 
         # 1. --- Initialization ---
         node_memory = defaultdict(dict)
