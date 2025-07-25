@@ -48,6 +48,22 @@ class CounterNode(BaseNode):
         print(f"CounterNode: Executed {new_count} time(s).")
         return (new_count,)
 
+class AddNodeTest(BaseNode):
+    CATEGORY = "Test"
+
+    INPUT_SOCKETS = {
+        "a": {"type": SocketType.NUMBER, "is_dependency": True},
+        "b": {"type": SocketType.NUMBER} #intentionally not a depencency for testing purposes
+    }
+    OUTPUT_SOCKETS = {"result": {"type": SocketType.NUMBER}}
+
+    def load(self):
+        pass
+
+    def execute(self, a, b):
+        result = float(a) + float(b)
+        return (result,)
+
 class LoopingAccumulatorNode(BaseNode):
     """
     A node that demonstrates the "do not wait" and dynamic state update features to create a loop.
