@@ -562,7 +562,7 @@ class LoggingProcessorNode(BaseNode):
 
 ## 10. Advanced Feature: Creating Event Nodes
 
-Event nodes are a special category of nodes that, instead of being triggered by an input, listen for an external event (like a webhook or a message queue) and start a new workflow run when that event occurs. This enables powerful features like parallel workflow execution and integration with external systems.
+Event nodes are a special category of nodes that, instead of being triggered by an input, listen for an external event (like a webhook, message queue, or user input) and start a new workflow run when that event occurs. This enables powerful features like parallel workflow execution and integration with external systems.
 
 ### The `EventNode` Class
 
@@ -686,6 +686,11 @@ class WebhookRequestHandler(BaseHTTPRequestHandler):
         return # Suppress console logging
 ```
 
+### Special case: Display Panel Chat Input Node
+
+The `DisplayInputEventNode` is a special event node that enables chat-like interactions through the Display Panel. Unlike external event nodes, it's triggered by user input from the frontend.
+
+
 ### Key Takeaways for Event Nodes
 -   Inherit from `EventNode`.
 -   Implement `async def start_listening(self, trigger_workflow_callback)` to start your listener.
@@ -693,6 +698,7 @@ class WebhookRequestHandler(BaseHTTPRequestHandler):
 -   When your event happens, call `trigger_workflow_callback(payload)` to start the workflow.
 -   In your `execute()` method, get the data from `self.memory.get('initial_payload')` and return it on an output socket.
 -   If your listener runs in a separate thread (like the `HTTPServer`), you must use `asyncio.run_coroutine_threadsafe(coro, loop)` to safely call the async callback on the main event loop.
+-   For Display Panel integration, use `self.global_state.get('display_context', [])` to access the conversation history.
 
 ---
 

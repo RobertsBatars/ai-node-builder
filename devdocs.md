@@ -133,6 +133,30 @@ To move beyond a single, user-initiated workflow, an event-driven architecture w
 *   **Server State Management**:
     *   The server (`core/server.py`) was significantly updated to manage the more complex state. It now tracks multiple workflow tasks and `EventManager` instances per client, ensuring that all processes are correctly started and cleaned up, even on unexpected disconnects.
 
+### **3.9. Display Panel Chat Interface and Interactive Workflows**
+
+To enable real-time user interaction with workflows, a chat-like interface was implemented in the Display Panel. This feature allows users to send text input directly to running workflows through a special event node.
+
+*   **The `DisplayInputEventNode`**: A new event node (`nodes/event_nodes.py`) that listens for user input from the Display Panel chat interface. Unlike other event nodes that listen to external sources (like HTTP requests), this node is triggered by frontend user interactions.
+    *   The node provides two outputs: `user_input` (the text entered by the user) and `display_context` (the current display panel context for maintaining conversation history).
+    *   It integrates seamlessly with the existing `EventNode` architecture and `EventManager` system.
+
+*   **Frontend Chat Interface**: The Display Panel (`web/index.html`) was enhanced with:
+    *   An enabled textarea input field with submit button and Enter key support
+    *   Real-time status indicators showing requirements (event listening + DisplayInputEventNode presence)
+    *   Automatic detection of `DisplayInputEventNode` in the current workflow
+    *   User messages appear immediately in the chat interface before triggering the workflow
+
+*   **WebSocket Integration**: A new `display_input` action was added to the WebSocket handler (`core/server.py`) that:
+    *   Receives user input from the frontend
+    *   Locates the active `DisplayInputEventNode` in the current event listeners
+    *   Triggers the workflow with the user input as the payload
+    *   Provides helpful error messages when the node is not available or listening is disabled
+
+*   **Parallel Execution**: Display input events trigger workflows in parallel using the same system as other events, with descriptive run IDs (`display_input_*`) to distinguish them from other event-driven workflows.
+
+This feature enables chat-like interactions where users can send messages through the Display Panel, have them processed by the workflow (potentially involving AI processing), and receive responses back through display output nodes - creating an interactive conversation experience.
+
 ### **3.8. Persistent Display Context and Workflow Verification**
 
 To provide a more persistent, chat-like interface for workflows, a global "Display Panel" was implemented. This feature required careful state management to ensure that the context was meaningful even when the underlying workflow changed.

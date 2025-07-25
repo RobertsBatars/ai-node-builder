@@ -82,6 +82,48 @@ class WebhookNode(EventNode):
         return (payload,)
 
 
+class DisplayInputEventNode(EventNode):
+    """
+    An event node that listens for input from the display panel chat interface.
+    This node enables chat-like interaction where users can type messages in the
+    display panel and trigger workflows.
+    """
+    CATEGORY = "Events"
+    
+    INPUT_SOCKETS = {}
+    OUTPUT_SOCKETS = {
+        "user_input": {"type": SocketType.TEXT},
+        "display_context": {"type": SocketType.ANY}
+    }
+
+    def load(self):
+        """Initialize the event node."""
+        self.trigger_callback = None
+        
+    async def start_listening(self, trigger_workflow_callback):
+        """
+        Store the callback function. The actual triggering happens when the
+        server receives a 'display_input' WebSocket message.
+        """
+        self.trigger_callback = trigger_workflow_callback
+        print(f"DisplayInputEventNode: Ready to receive display panel inputs.")
+        
+    async def stop_listening(self):
+        """Clean up the listener."""
+        self.trigger_callback = None
+        print("DisplayInputEventNode: Stopped listening for display panel inputs.")
+        
+    def execute(self, *args, **kwargs):
+        """
+        Called when the workflow starts from display panel input.
+        Returns the user input and current display context.
+        """
+        payload = self.memory.get('initial_payload', "")
+        # Get current display context from global state
+        display_context = self.global_state.get('display_context', [])
+        return (payload, display_context)
+
+
 class WebhookRequestHandler(BaseHTTPRequestHandler):
     def __init__(self, loop, trigger_callback, configured_path, *args, **kwargs):
         self.loop = loop

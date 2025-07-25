@@ -148,6 +148,31 @@
             border-radius: 4px;
             padding: 8px;
             resize: none;
+            margin-bottom: 8px;
+        }
+        #display-input-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #display-submit-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        #display-submit-btn:hover { background-color: #45a049; }
+        #display-submit-btn:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+        #display-input-status {
+            font-size: 11px;
+            color: #aaa;
+            font-style: italic;
         }
     </style>
 </head>
@@ -190,7 +215,11 @@
         </div>
         <div id="display-messages" class="panel-content"></div>
         <div id="display-input-area">
-            <textarea id="display-input" placeholder="Input disabled for now..." rows="3" disabled></textarea>
+            <textarea id="display-input" placeholder="Type your message here..." rows="3"></textarea>
+            <div id="display-input-controls">
+                <div id="display-input-status">Event listening required</div>
+                <button id="display-submit-btn" disabled>Send</button>
+            </div>
         </div>
     </div>
 
@@ -222,12 +251,17 @@
             const saveDisplayBtn = document.getElementById('save-display-btn');
             const loadDisplayBtn = document.getElementById('load-display-btn');
             const clearDisplayBtn = document.getElementById('clear-display-btn');
+            const displayInput = document.getElementById('display-input');
+            const displaySubmitBtn = document.getElementById('display-submit-btn');
+            const displayInputStatus = document.getElementById('display-input-status');
             
             let logPanelVisible = false;
             let displayPanelVisible = false;
             let localDisplayContext = [];
             // REVERT: All complex hash and warning state variables have been removed.
-            let contextGraphHash = null; 
+            let contextGraphHash = null;
+            let eventListening = false;
+            let hasDisplayInputEventNode = false; 
 
             const log = (message) => {
                 console.log(message);
@@ -304,8 +338,45 @@
             };
 
             const setListeningState = (isListening) => {
+                eventListening = isListening;
                 listenButton.style.display = isListening ? 'none' : 'inline-block';
                 stopListenButton.style.display = isListening ? 'inline-block' : 'none';
+                updateDisplayInputState();
+            };
+
+            const updateDisplayInputState = () => {
+                const canSubmit = eventListening && hasDisplayInputEventNode;
+                displaySubmitBtn.disabled = !canSubmit;
+                
+                if (!eventListening) {
+                    displayInputStatus.textContent = "Event listening required";
+                } else if (!hasDisplayInputEventNode) {
+                    displayInputStatus.textContent = "DisplayInputEventNode required";
+                } else {
+                    displayInputStatus.textContent = "Ready to send";
+                }
+            };
+
+            const checkForDisplayInputEventNode = () => {
+                if (!graph) return;
+                // Check for both full type path and just the class name
+                let nodes = graph.findNodesByType("Events/DisplayInputEventNode");
+                if (!nodes || nodes.length === 0) {
+                    nodes = graph.findNodesByType("DisplayInputEventNode");
+                }
+                // Also check by iterating through all nodes if findNodesByType doesn't work
+                if (!nodes || nodes.length === 0) {
+                    nodes = [];
+                    for (let i in graph._nodes) {
+                        const node = graph._nodes[i];
+                        if (node.type === "Events/DisplayInputEventNode" || node.type === "DisplayInputEventNode") {
+                            nodes.push(node);
+                        }
+                    }
+                }
+                hasDisplayInputEventNode = nodes && nodes.length > 0;
+                console.log("DisplayInputEventNode check:", hasDisplayInputEventNode, "Nodes found:", nodes?.length || 0);
+                updateDisplayInputState();
             };
             
             toggleLogButton.addEventListener('click', () => {
@@ -323,6 +394,15 @@
             });
 
             const renderDisplayMessage = (msg) => {
+                // Ensure display messages container exists and is visible
+                if (!displayMessages || !displayPanelVisible) {
+                    console.warn("Display messages container not ready or panel not visible, queuing message:", msg);
+                    // Queue the message to be rendered when panel becomes visible
+                    setTimeout(() => renderDisplayMessage(msg), 100);
+                    return;
+                }
+                
+                console.log("Rendering display message:", msg);
                 const bubble = document.createElement('div');
                 bubble.className = 'display-message-bubble';
                 const node = graph.getNodeById(msg.node_id);
@@ -349,10 +429,22 @@
             };
 
             const toggleDisplayPanel = (forceShow = false) => {
+                const wasVisible = displayPanelVisible;
                 displayPanelVisible = forceShow || !displayPanelVisible;
                 displayPanel.style.display = displayPanelVisible ? 'flex' : 'none';
                 body.classList.toggle('display-panel-visible', displayPanelVisible);
                 toggleDisplayButton.textContent = displayPanelVisible ? 'Hide Display' : 'Show Display';
+                // Check for DisplayInputEventNode when panel is opened
+                if (displayPanelVisible) {
+                    setTimeout(() => checkForDisplayInputEventNode(), 50);
+                    // If panel was just shown, redraw all messages to ensure they're visible
+                    if (!wasVisible && localDisplayContext.length > 0) {
+                        setTimeout(() => {
+                            console.log("Panel was hidden, redrawing all messages");
+                            redrawAllDisplayMessages();
+                        }, 100);
+                    }
+                }
             };
 
             toggleDisplayButton.addEventListener('click', () => toggleDisplayPanel());
@@ -364,8 +456,49 @@
                 sendWsMessage({ action: 'clear_display_context' });
             });
 
+            const submitDisplayInput = () => {
+                const inputText = displayInput.value.trim();
+                if (!inputText || !eventListening || !hasDisplayInputEventNode) return;
+                
+                // Add user's message to display immediately
+                const userMessage = {
+                    node_title: "User",
+                    content_type: "text",
+                    data: inputText,
+                    timestamp: new Date().toISOString()
+                };
+                localDisplayContext.push(userMessage);
+                renderDisplayMessage(userMessage);
+                
+                // Send to backend
+                sendWsMessage({ 
+                    action: 'display_input',
+                    input: inputText
+                });
+                
+                // Clear input
+                displayInput.value = '';
+            };
+
+            displaySubmitBtn.addEventListener('click', submitDisplayInput);
+            
+            displayInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    submitDisplayInput();
+                }
+            });
+
             const graph = new LGraph();
             const canvas = new LGraphCanvas("#main-canvas", graph);
+            
+            // Add event listeners for graph changes
+            graph.onNodeAdded = function(node) {
+                setTimeout(() => checkForDisplayInputEventNode(), 100);
+            };
+            graph.onNodeRemoved = function(node) {
+                setTimeout(() => checkForDisplayInputEventNode(), 100);
+            };
             
             const resizeCanvas = () => canvas.resize(window.innerWidth, window.innerHeight);
             window.addEventListener('resize', resizeCanvas);
@@ -388,10 +521,20 @@
                         if (data.source === 'node') {
                             const nodeInfo = { id: data.payload.node_id, name: data.payload.node_type };
                             if (data.type === 'display') {
-                                if (!displayPanelVisible) toggleDisplayPanel(true);
-                                const newMsg = { node_id: data.payload.node_id, node_title: data.payload.node_type, ...data.payload.data };
-                                localDisplayContext.push(newMsg);
-                                renderDisplayMessage(newMsg);
+                                // Show panel first if hidden, then render message after a small delay
+                                if (!displayPanelVisible) {
+                                    toggleDisplayPanel(true);
+                                    // Small delay to ensure panel is fully shown before rendering
+                                    setTimeout(() => {
+                                        const newMsg = { node_id: data.payload.node_id, node_title: data.payload.node_type, ...data.payload.data };
+                                        localDisplayContext.push(newMsg);
+                                        renderDisplayMessage(newMsg);
+                                    }, 50);
+                                } else {
+                                    const newMsg = { node_id: data.payload.node_id, node_title: data.payload.node_type, ...data.payload.data };
+                                    localDisplayContext.push(newMsg);
+                                    renderDisplayMessage(newMsg);
+                                }
                             } else {
                                 let message = data.payload.data?.message ?? JSON.stringify(data.payload.data);
                                 addLogMessage(message, data.type, nodeInfo);
@@ -532,12 +675,15 @@
                     LiteGraph.registerNodeType(`${blueprint.category}/${blueprint.name}`, DynamicNode);
                 });
                 log("Nodes loaded. Right-click to add nodes.");
+                // Initial check after nodes are loaded
+                setTimeout(() => checkForDisplayInputEventNode(), 200);
             } catch (error) {
                 log("Error loading node definitions.");
                 console.error("Fetch Error:", error);
             }
 
             runButton.addEventListener("click", () => {
+                checkForDisplayInputEventNode();
                 const selected_nodes_map = canvas.selected_nodes;
                 const selected_ids = Object.keys(selected_nodes_map);
                 if (selected_ids.length === 0) {
@@ -565,6 +711,7 @@
 
             listenButton.addEventListener("click", () => {
                 if (ws.readyState === WebSocket.OPEN) {
+                    checkForDisplayInputEventNode();
                     log("Requesting to start event listeners...");
                     setListeningState(true);
                     ws.send(JSON.stringify({ action: "start_listening", graph: graph.serialize() }));

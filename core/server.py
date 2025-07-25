@@ -166,6 +166,27 @@ async def websocket_endpoint(websocket: WebSocket):
                     await manager.stop_listeners()
                 await websocket.send_text(json.dumps({"type": "engine_log", "run_id": "events", "message": "Stopped listening for events."}))
 
+            elif action == "display_input":
+                user_input = data.get("input", "")
+                if not user_input.strip():
+                    continue
+                
+                # Find DisplayInputEventNode in the current event listeners
+                manager = event_managers.get(websocket)
+                if manager:
+                    display_input_node = None
+                    for node_id, node in manager.listening_nodes.items():
+                        if node.__class__.__name__ == "DisplayInputEventNode":
+                            display_input_node = node
+                            break
+                    
+                    if display_input_node and display_input_node.trigger_callback:
+                        await display_input_node.trigger_callback(user_input)
+                    else:
+                        await websocket.send_text(json.dumps({"type": "engine_log", "run_id": "display_input", "message": "No active DisplayInputEventNode found or event listening is not enabled."}))
+                else:
+                    await websocket.send_text(json.dumps({"type": "engine_log", "run_id": "display_input", "message": "Event manager not found. Please start event listening first."}))
+
 
     except WebSocketDisconnect:
         print(f"Client {websocket.client} disconnected.")

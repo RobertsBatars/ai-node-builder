@@ -36,8 +36,12 @@ class EventManager:
             
             # Define the callback that the event node will use to trigger a workflow
             async def trigger_callback(payload, start_node_id=node_id, current_graph_data=graph_data):
-                run_id = f"event_{uuid.uuid4()}"
-                print(f"Event received from node {start_node_id}. Triggering workflow with run_id: {run_id}")
+                # Special handling for DisplayInputEventNode to use more descriptive run_id
+                if node.__class__.__name__ == "DisplayInputEventNode":
+                    run_id = f"display_input_{uuid.uuid4().hex[:8]}"
+                else:
+                    run_id = f"event_{uuid.uuid4()}"
+                print(f"Event received from node {start_node_id} ({node.__class__.__name__}). Triggering workflow with run_id: {run_id}")
                 
                 task = asyncio.create_task(
                     self.engine.run_workflow(
