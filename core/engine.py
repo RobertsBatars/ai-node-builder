@@ -7,6 +7,8 @@ import pkgutil
 import importlib
 import asyncio
 from collections import defaultdict
+import hashlib
+import copy
 
 from core.definitions import BaseNode, EventNode, InputWidget, SKIP_OUTPUT, NodeStateUpdate
 
@@ -14,6 +16,14 @@ class NodeEngine:
     def __init__(self):
         self.node_classes = {}
         self.discover_nodes()
+        self._broadcast_callback = None
+
+    def set_broadcast_callback(self, callback):
+        self._broadcast_callback = callback
+
+    async def broadcast(self, message):
+        if self._broadcast_callback:
+            await self._broadcast_callback(copy.deepcopy(message))
 
     def discover_nodes(self):
         import nodes
@@ -27,17 +37,20 @@ class NodeEngine:
                 print(f"Error importing node module {name}: {e}")
         print(f"Discovered nodes: {list(self.node_classes.keys())}")
 
+    def _generate_graph_hash(self, graph_data):
+        # Create a simplified, position-independent representation of the graph for hashing.
+        structural_info = {
+            "nodes": sorted([{"id": n["id"], "type": n["type"]} for n in graph_data["nodes"]], key=lambda x: x["id"]),
+            "links": sorted([link[1:] for link in graph_data["links"]])
+        }
+        structural_json = json.dumps(structural_info, sort_keys=True)
+        return hashlib.sha256(structural_json.encode()).hexdigest()
+
     def generate_ui_blueprints(self):
         all_node_definitions = []
         for name, node_class in self.node_classes.items():
-            # Pass the full socket definition to the frontend
-            inputs_def = [
-                {"name": n, **s} for n, s in node_class.INPUT_SOCKETS.items()
-            ]
-            outputs_def = [
-                {"name": n, **s} for n, s in node_class.OUTPUT_SOCKETS.items()
-            ]
-            # Convert enums to string values for JSON serialization
+            inputs_def = [{"name": n, **s} for n, s in node_class.INPUT_SOCKETS.items()]
+            outputs_def = [{"name": n, **s} for n, s in node_class.OUTPUT_SOCKETS.items()]
             for item_def in inputs_def + outputs_def:
                 if 'type' in item_def and hasattr(item_def['type'], 'value'):
                     item_def['type'] = item_def['type'].value
@@ -60,8 +73,36 @@ class NodeEngine:
             all_node_definitions.append(node_def)
         return json.dumps(all_node_definitions, indent=2)
 
-    async def run_workflow(self, graph_data, start_node_id, websocket, run_id, initial_payload=None):
-        # Create a mapping of node IDs to node names for better log messages
+    async def run_workflow(self, graph_data, start_node_id, websocket, run_id, global_state, initial_payload=None):
+        current_hash = self._generate_graph_hash(graph_data)
+        global_state["graph_hash"] = current_hash
+
+        # --- Workflow Change Warning Logic ---
+        is_context_populated = bool(global_state.get("display_context"))
+        initial_hash = global_state.get("initial_graph_hash")
+
+        # If the context is not empty but has no initial hash, it means this is the first run
+        # in a new "session". We set the hash now.
+        if is_context_populated and not initial_hash:
+            global_state['initial_graph_hash'] = current_hash
+            initial_hash = current_hash
+
+        # If the context is populated and the hash mismatches, issue a warning.
+        # We no longer use 'warning_issued' to ensure the warning is sent on every subsequent run.
+        if is_context_populated and initial_hash and current_hash != initial_hash:
+            warning_msg = {
+                "node_id": None,
+                "node_title": "Engine Warning",
+                "content_type": "warning",
+                "data": "Workflow has changed since the context was started. Node filtering may be unreliable."
+            }
+            global_state['display_context'].append(warning_msg)
+            await self.broadcast({
+                "source": "node",
+                "type": "display",
+                "payload": {"data": warning_msg}
+            })
+        
         node_id_to_name = {
             str(node['id']): node.get('title', node['type'].split('/')[-1]) 
             for node in graph_data['nodes']
@@ -73,7 +114,6 @@ class NodeEngine:
                 "run_id": run_id,
                 "message": message
             }
-            # Include node information if provided
             if node_id:
                 log_message["node_id"] = node_id
                 log_message["node_name"] = node_id_to_name.get(node_id, "Unknown Node")
@@ -85,7 +125,7 @@ class NodeEngine:
         # 1. --- Initialization ---
         node_memory = defaultdict(dict)
         nodes_map = {
-            str(n['id']): self.node_classes[n['type'].split('/')[-1]](self, n, node_memory[str(n['id'])], run_id)
+            str(n['id']): self.node_classes[n['type'].split('/')[-1]](self, n, node_memory[str(n['id'])], run_id, global_state)
             for n in graph_data['nodes'] if n['type'].split('/')[-1] in self.node_classes
         }
 

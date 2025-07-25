@@ -15,12 +15,12 @@
             position: absolute; top: 0; left: 0; width: 100%;
             padding: 10px; background-color: #2a2a2a;
             box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index: 10;
-            display: flex; align-items: center;
+            display: flex; align-items: center; flex-wrap: wrap;
         }
         .top-button {
             padding: 8px 16px;
             border: none; border-radius: 4px; cursor: pointer; font-weight: bold;
-            margin-right: 10px;
+            margin-right: 10px; margin-bottom: 5px;
         }
         #run-button { background-color: #4CAF50; color: white; }
         #run-button:hover { background-color: #45a049; }
@@ -39,98 +39,104 @@
 
         #toggle-log-button { background-color: #9c27b0; color: white; }
         #toggle-log-button:hover { background-color: #7b1fa2; }
+        #toggle-display-button { background-color: #ff9800; color: white; }
+        #toggle-display-button:hover { background-color: #f57c00; }
 
         .top-button.disabled { background-color: #555; cursor: not-allowed; }
         #status-log { margin-left: 10px; font-style: italic; color: #aaa; }
         
-        #log-panel {
+        /* Panel Styles (Shared) */
+        .panel {
             position: absolute;
             bottom: 0;
-            left: 0;
-            width: 100%;
-            max-height: 300px;
             background-color: #2d2d2d;
             border-top: 1px solid #444;
             z-index: 5;
             display: none;
-            overflow-y: auto;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
+            flex-direction: column;
+            transition: width 0.3s ease;
         }
-        
-        #log-header {
+        .panel-header {
             padding: 8px 12px;
             background-color: #3a3a3a;
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid #444;
+            flex-shrink: 0;
         }
-        
-        #log-filters {
-            display: flex;
-            gap: 10px;
-            align-items: center;
+        .panel-content {
+            overflow-y: auto;
+            flex-grow: 1;
         }
-        
-        .log-filter-checkbox {
-            display: flex;
-            align-items: center;
-            gap: 4px;
+
+        /* Log Panel Specifics */
+        #log-panel {
+            left: 0;
+            width: 100%;
+            max-height: 300px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
         }
-        
-        #log-content {
+        body.display-panel-visible #log-panel {
+            width: calc(100% - 450px);
+        }
+        #log-filters { display: flex; gap: 10px; align-items: center; }
+        .log-filter-checkbox { display: flex; align-items: center; gap: 4px; }
+        #log-content { padding: 10px; }
+        .log-message { margin: 4px 0; padding: 4px 0; border-bottom: 1px solid #3a3a3a; }
+        .log-message.hidden { display: none; }
+        .log-timestamp { color: #888; margin-right: 8px; }
+        .log-type { display: inline-block; padding: 2px 6px; border-radius: 3px; font-weight: bold; margin-right: 8px; text-transform: uppercase; }
+        .log-type-engine { background-color: #2196F3; }
+        .log-type-log { background-color: #4CAF50; }
+        .log-type-debug { background-color: #FF9800; }
+        .log-type-test { background-color: #9C27B0; }
+        .log-type-error { background-color: #f44336; }
+        .log-node-info { color: #BB86FC; font-weight: bold; }
+
+        /* Display Panel Specifics */
+        #display-panel {
+            right: 0;
+            width: 450px;
+            height: 70%;
+            border-left: 1px solid #444;
+        }
+        #display-messages { padding: 10px; }
+        .display-message-bubble {
+            background-color: #3c3c3c;
+            border-radius: 8px;
             padding: 10px;
-            height: calc(100% - 36px);
+            margin-bottom: 12px;
+            max-width: 95%;
         }
-        
-        .log-message {
-            margin: 4px 0;
-            padding: 4px 0;
-            border-bottom: 1px solid #3a3a3a;
-        }
-        
-        .log-message.hidden {
-            display: none;
-        }
-        
-        .log-timestamp {
-            color: #888;
-            margin-right: 8px;
-        }
-        
-        .log-type {
-            display: inline-block;
-            padding: 2px 6px;
-            border-radius: 3px;
+        .display-message-header {
+            font-size: 11px;
             font-weight: bold;
-            margin-right: 8px;
-            text-transform: uppercase;
+            color: #aaa;
+            margin-bottom: 5px;
         }
-        
-        .log-type-engine {
-            background-color: #2196F3;
+        .display-message-header .archived { color: #f44336; font-style: italic; }
+        .display-message-content p { margin: 0; word-wrap: break-word; }
+        .display-message-content img, .display-message-content video {
+            max-width: 100%;
+            border-radius: 5px;
+            margin-top: 5px;
         }
-        
-        .log-type-log {
-            background-color: #4CAF50;
+        #display-input-area {
+            border-top: 1px solid #444;
+            padding: 10px;
+            flex-shrink: 0;
         }
-        
-        .log-type-debug {
-            background-color: #FF9800;
-        }
-        
-        .log-type-test {
-            background-color: #9C27B0;
-        }
-        
-        .log-type-error {
-            background-color: #f44336;
-        }
-        
-        .log-node-info {
-            color: #BB86FC;
-            font-weight: bold;
+        #display-input {
+            width: 100%;
+            box-sizing: border-box;
+            background-color: #252525;
+            color: #eee;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 8px;
+            resize: none;
         }
     </style>
 </head>
@@ -140,43 +146,50 @@
         <button id="stop-button" class="top-button">STOP</button>
         <button id="listen-button" class="top-button">Listen for Events</button>
         <button id="stop-listen-button" class="top-button">Stop Listening</button>
-        <button id="save-button" class="top-button">Save</button>
-        <button id="load-button" class="top-button">Load</button>
+        <button id="save-button" class="top-button">Save Workflow</button>
+        <button id="load-button" class="top-button">Load Workflow</button>
         <button id="toggle-log-button" class="top-button">Show Logs</button>
+        <button id="toggle-display-button" class="top-button">Show Display</button>
         <div id="status-log">Status: Disconnected</div>
     </div>
-    <div id="log-panel">
-        <div id="log-header">
+
+    <div id="log-panel" class="panel">
+        <div class="panel-header">
             <div>Execution Logs</div>
             <div id="log-filters">
-                <div class="log-filter-checkbox">
-                    <input type="checkbox" id="filter-engine" checked>
-                    <label for="filter-engine">Engine</label>
-                </div>
-                <div class="log-filter-checkbox">
-                    <input type="checkbox" id="filter-log" checked>
-                    <label for="filter-log">Log</label>
-                </div>
-                <div class="log-filter-checkbox">
-                    <input type="checkbox" id="filter-debug" checked>
-                    <label for="filter-debug">Debug</label>
-                </div>
-                <div class="log-filter-checkbox">
-                    <input type="checkbox" id="filter-test" checked>
-                    <label for="filter-test">Test</label>
-                </div>
-                <div class="log-filter-checkbox">
-                    <input type="checkbox" id="filter-error" checked>
-                    <label for="filter-error">Error</label>
-                </div>
-                <button id="clear-log-button" class="top-button">Clear</button>
+                <!-- Filters -->
+                <div class="log-filter-checkbox"><input type="checkbox" id="filter-engine" checked><label for="filter-engine">Engine</label></div>
+                <div class="log-filter-checkbox"><input type="checkbox" id="filter-log" checked><label for="filter-log">Log</label></div>
+                <div class="log-filter-checkbox"><input type="checkbox" id="filter-debug" checked><label for="filter-debug">Debug</label></div>
+                <div class="log-filter-checkbox"><input type="checkbox" id="filter-test" checked><label for="filter-test">Test</label></div>
+                <div class="log-filter-checkbox"><input type="checkbox" id="filter-error" checked><label for="filter-error">Error</label></div>
+                <button id="clear-log-button" class="top-button" style="background-color:#666;">Clear</button>
             </div>
         </div>
-        <div id="log-content"></div>
+        <div id="log-content" class="panel-content"></div>
     </div>
+
+    <div id="display-panel" class="panel">
+        <div class="panel-header">
+            <span>Display</span>
+            <div id="panel-controls">
+                <button id="save-display-btn" class="top-button" style="background-color:#008CBA;">Save</button>
+                <button id="load-display-btn" class="top-button" style="background-color:#f44336;">Load</button>
+                <button id="clear-display-btn" class="top-button" style="background-color:#666;">Clear</button>
+            </div>
+        </div>
+        <div id="display-messages" class="panel-content"></div>
+        <div id="display-input-area">
+            <textarea id="display-input" placeholder="Input disabled for now..." rows="3" disabled></textarea>
+        </div>
+    </div>
+
     <canvas id='main-canvas'></canvas>
+
     <script>
         (async () => {
+            // --- DOM Elements ---
+            const body = document.body;
             const statusLog = document.getElementById('status-log');
             const runButton = document.getElementById('run-button');
             const stopButton = document.getElementById('stop-button');
@@ -184,209 +197,187 @@
             const stopListenButton = document.getElementById('stop-listen-button');
             const saveButton = document.getElementById('save-button');
             const loadButton = document.getElementById('load-button');
+            
+            // Log Panel Elements
             const toggleLogButton = document.getElementById('toggle-log-button');
             const clearLogButton = document.getElementById('clear-log-button');
             const logPanel = document.getElementById('log-panel');
             const logContent = document.getElementById('log-content');
-            
-            // Filter checkboxes
-            const filterEngine = document.getElementById('filter-engine');
-            const filterLog = document.getElementById('filter-log');
-            const filterDebug = document.getElementById('filter-debug');
-            const filterTest = document.getElementById('filter-test');
-            const filterError = document.getElementById('filter-error');
-            
-            let logPanelVisible = false;
+            const filterCheckboxes = {
+                engine: document.getElementById('filter-engine'),
+                log: document.getElementById('filter-log'),
+                debug: document.getElementById('filter-debug'),
+                test: document.getElementById('filter-test'),
+                error: document.getElementById('filter-error')
+            };
 
+            // Display Panel Elements
+            const toggleDisplayButton = document.getElementById('toggle-display-button');
+            const displayPanel = document.getElementById('display-panel');
+            const displayMessages = document.getElementById('display-messages');
+            const saveDisplayBtn = document.getElementById('save-display-btn');
+            const loadDisplayBtn = document.getElementById('load-display-btn');
+            const clearDisplayBtn = document.getElementById('clear-display-btn');
+
+            // --- State Variables ---
+            let ws;
+            let logPanelVisible = false;
+            let displayPanelVisible = false;
+            let localDisplayContext = [];
+            let localGraphHash = null;
+
+            const graph = new LGraph();
+            const canvas = new LGraphCanvas("#main-canvas", graph);
+
+            // --- Core Functions ---
             const log = (message) => {
                 console.log(message);
                 statusLog.textContent = `Status: ${message}`;
             };
-            
+
+            const sendWsMessage = (message) => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify(message));
+                } else {
+                    log("Cannot send message. WebSocket is not connected.");
+                }
+            };
+
+            // --- Log Panel Logic ---
             const addLogMessage = (message, type = 'engine', nodeInfo = null) => {
                 const timestamp = new Date().toLocaleTimeString();
                 const logEntry = document.createElement('div');
                 logEntry.className = 'log-message';
-                logEntry.dataset.type = type; // Store the message type for filtering
-                
-                let typeClass = 'log-type-engine';
-                switch (type) {
-                    case 'log':
-                        typeClass = 'log-type-log';
-                        break;
-                    case 'debug':
-                        typeClass = 'log-type-debug';
-                        break;
-                    case 'test':
-                        typeClass = 'log-type-test';
-                        break;
-                    case 'error':
-                        typeClass = 'log-type-error';
-                        break;
-                }
-                
-                let nodeDisplay = '';
-                if (nodeInfo) {
-                    nodeDisplay = `<span class="log-node-info">${nodeInfo.name} (${nodeInfo.id})</span>: `;
-                }
-                
-                logEntry.innerHTML = `
-                    <span class="log-timestamp">[${timestamp}]</span>
-                    <span class="log-type ${typeClass}">${type}</span>
-                    ${nodeDisplay}${message}
-                `;
-                
+                logEntry.dataset.type = type;
+                const typeClass = `log-type-${type}`;
+                const nodeDisplay = nodeInfo ? `<span class="log-node-info">${nodeInfo.name} (${nodeInfo.id})</span>: ` : '';
+                logEntry.innerHTML = `<span class="log-timestamp">[${timestamp}]</span> <span class="log-type ${typeClass}">${type}</span> ${nodeDisplay}${message}`;
                 logContent.appendChild(logEntry);
                 logContent.scrollTop = logContent.scrollHeight;
-                
-                // Apply filtering
                 applyLogFilters();
             };
-            
-            // Apply filters to show/hide log messages
+
             const applyLogFilters = () => {
-                const logEntries = logContent.querySelectorAll('.log-message');
-                logEntries.forEach(entry => {
+                logContent.querySelectorAll('.log-message').forEach(entry => {
                     const type = entry.dataset.type;
-                    let isVisible = false;
-                    
-                    switch (type) {
-                        case 'engine':
-                            isVisible = filterEngine.checked;
-                            break;
-                        case 'log':
-                            isVisible = filterLog.checked;
-                            break;
-                        case 'debug':
-                            isVisible = filterDebug.checked;
-                            break;
-                        case 'test':
-                            isVisible = filterTest.checked;
-                            break;
-                        case 'error':
-                            isVisible = filterError.checked;
-                            break;
-                        default:
-                            isVisible = true; // Show unknown types by default
-                    }
-                    
+                    const isVisible = filterCheckboxes[type] ? filterCheckboxes[type].checked : true;
                     entry.classList.toggle('hidden', !isVisible);
                 });
             };
-            
-            // Add event listeners to filter checkboxes
-            filterEngine.addEventListener('change', applyLogFilters);
-            filterLog.addEventListener('change', applyLogFilters);
-            filterDebug.addEventListener('change', applyLogFilters);
-            filterTest.addEventListener('change', applyLogFilters);
-            filterError.addEventListener('change', applyLogFilters);
 
-            const setWorkflowRunningState = (isRunning) => {
-                if (isRunning) {
-                    runButton.classList.add('disabled');
-                    runButton.disabled = true;
-                    stopButton.style.display = 'inline-block';
-                } else {
-                    runButton.classList.remove('disabled');
-                    runButton.disabled = false;
-                    stopButton.style.display = 'none';
+            // --- Display Panel Logic ---
+            const renderDisplayMessage = (msg) => {
+                const bubble = document.createElement('div');
+                bubble.className = 'display-message-bubble';
+
+                const node = graph.getNodeById(msg.node_id);
+                const archivedTag = (msg.node_id && !node) ? ' <span class="archived">[Archived]</span>' : '';
+                
+                let headerText = msg.node_title || "Untitled";
+                if (msg.node_id) {
+                    headerText += ` (ID: ${msg.node_id})`;
                 }
+
+                const header = `<div class="display-message-header">${headerText}${archivedTag}</div>`;
+
+                let content = '';
+                switch(msg.content_type) {
+                    case 'image':
+                        content = `<img src="${msg.data}" alt="Image from node ${msg.node_id}">`;
+                        break;
+                    case 'video':
+                        content = `<video src="${msg.data}" controls>Your browser does not support the video tag.</video>`;
+                        break;
+                    case 'warning':
+                        content = `<p style="color:#ff9800;">${msg.data}</p>`;
+                        break;
+                    case 'text':
+                    default:
+                        content = `<p>${msg.data}</p>`;
+                }
+                bubble.innerHTML = `${header}<div class="display-message-content">${content}</div>`;
+                displayMessages.appendChild(bubble);
+            };
+
+            const redrawAllDisplayMessages = () => {
+                displayMessages.innerHTML = '';
+                localDisplayContext.forEach(renderDisplayMessage);
+                displayMessages.scrollTop = displayMessages.scrollHeight;
+            };
+
+            const showDisplayPanel = () => {
+                if (!displayPanelVisible) {
+                    toggleDisplayPanel(true);
+                }
+            };
+            
+            const toggleDisplayPanel = (forceShow = false) => {
+                displayPanelVisible = forceShow || !displayPanelVisible;
+                displayPanel.style.display = displayPanelVisible ? 'flex' : 'none';
+                body.classList.toggle('display-panel-visible', displayPanelVisible);
+                toggleDisplayButton.textContent = displayPanelVisible ? 'Hide Display' : 'Show Display';
+            };
+
+            // --- UI State Changers ---
+            const setWorkflowRunningState = (isRunning) => {
+                runButton.classList.toggle('disabled', isRunning);
+                runButton.disabled = isRunning;
+                stopButton.style.display = isRunning ? 'inline-block' : 'none';
             };
 
             const setListeningState = (isListening) => {
-                if (isListening) {
-                    listenButton.style.display = 'none';
-                    stopListenButton.style.display = 'inline-block';
-                } else {
-                    listenButton.style.display = 'inline-block';
-                    stopListenButton.style.display = 'none';
-                }
+                listenButton.style.display = isListening ? 'none' : 'inline-block';
+                stopListenButton.style.display = isListening ? 'inline-block' : 'none';
             };
-            
-            // Toggle log panel visibility
-            toggleLogButton.addEventListener('click', () => {
-                logPanelVisible = !logPanelVisible;
-                logPanel.style.display = logPanelVisible ? 'block' : 'none';
-                toggleLogButton.textContent = logPanelVisible ? 'Hide Logs' : 'Show Logs';
-                if (logPanelVisible) {
-                    logContent.scrollTop = logContent.scrollHeight;
-                    applyLogFilters(); // Apply filters when showing the panel
-                }
-            });
-            
-            // Clear log content
-            clearLogButton.addEventListener('click', () => {
-                logContent.innerHTML = '';
-            });
 
-            const graph = new LGraph();
-            const canvas = new LGraphCanvas("#main-canvas", graph);
-            
-            const resizeCanvas = () => canvas.resize(window.innerWidth, window.innerHeight);
-            window.addEventListener('resize', resizeCanvas);
-            resizeCanvas();
-
-            let ws;
+            // --- WebSocket Handling ---
             function connectWebSocket() {
                 ws = new WebSocket(`ws://${window.location.host}/ws`);
                 
-                ws.onopen = () => log("Connected to backend");
+                ws.onopen = () => {
+                    log("Connected to backend");
+                    sendWsMessage({ action: "get_initial_context" });
+                };
                 
-                ws.onmessage = function (event) {
-                    try {
-                        const data = JSON.parse(event.data);
-                        console.log("Received data:", data);
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    console.log("Received data:", data);
 
-                        if (data.source === 'node') {
-                            // It's a message from a specific node (e.g., log, debug, test)
-                            const nodeInfo = {
-                                id: data.payload.node_id,
-                                name: data.payload.node_type
-                            };
-                            
-                            // Extract the message content from the payload data
-                            let message = '';
-                            if (data.payload.data && data.payload.data.message) {
-                                message = data.payload.data.message;
-                            } else {
-                                // Fallback for other data structures
-                                message = JSON.stringify(data.payload.data);
-                            }
-                            
-                            addLogMessage(message, data.type, nodeInfo);
-                            return;
-                        }
-
-                        if (data.type === 'engine_log') {
-                            const run_id = data.run_id;
-                            const message = data.message;
-                            
-                            // Add a prefix for event-driven runs to distinguish them in the log
-                            const logPrefix = run_id === 'frontend_run' ? '' : `[Event Run ${run_id.substring(0, 6)}] `;
-                            
-                            // Create node info if available
-                            let nodeInfo = null;
-                            if (data.node_id) {
-                                nodeInfo = {
-                                    id: data.node_id,
-                                    name: data.node_name || "Unknown Node"
-                                };
-                            }
-                            
+                    switch (data.type) {
+                        case 'engine_log': {
+                            const { run_id, message, node_id, node_name } = data;
+                            const nodeInfo = node_id ? { id: node_id, name: node_name || "Unknown Node" } : null;
                             addLogMessage(message, 'engine', nodeInfo);
-                            log(logPrefix + message);
-
-                            // The main "Run" button should only be re-enabled by the completion of the frontend-initiated workflow.
                             if (run_id === 'frontend_run' && (message.includes("Workflow finished") || message.includes("Workflow stopped"))) {
                                 setWorkflowRunningState(false);
                             }
+                            break;
                         }
-
-                    } catch (e) {
-                        // Fallback for any non-JSON messages, though the backend should not send them anymore.
-                        console.error("Received non-JSON message:", event.data);
-                        log(event.data);
-                        addLogMessage(`Error parsing message: ${event.data}`, 'error');
+                        case 'display_context_state':
+                            showDisplayPanel();
+                            localDisplayContext = data.payload.display_context || [];
+                            localGraphHash = data.payload.graph_hash;
+                            redrawAllDisplayMessages();
+                            break;
+                        case 'display_context_cleared':
+                            localDisplayContext = [];
+                            redrawAllDisplayMessages();
+                            break;
+                        default: // Node messages (log, debug, display, etc.)
+                            if (data.source === 'node') {
+                                const { type, payload } = data;
+                                const nodeInfo = { id: payload.node_id, name: payload.node_type };
+                                if (type === 'display') {
+                                    showDisplayPanel();
+                                    const newMsg = { node_id: payload.node_id, ...payload.data };
+                                    localDisplayContext.push(newMsg);
+                                    renderDisplayMessage(newMsg);
+                                    displayMessages.scrollTop = displayMessages.scrollHeight;
+                                } else {
+                                    const message = payload.data?.message ?? JSON.stringify(payload.data);
+                                    addLogMessage(message, type, nodeInfo);
+                                }
+                            }
                     }
                 };
                 
@@ -394,231 +385,52 @@
                     log("Disconnected from backend");
                     setWorkflowRunningState(false);
                     setListeningState(false);
-                    // Optional: try to reconnect
-                    // setTimeout(connectWebSocket, 5000); 
                 };
-
                 ws.onerror = () => {
                     log("Connection error");
                     setWorkflowRunningState(false);
                     setListeningState(false);
                 };
             }
-            connectWebSocket();
 
-            log("Fetching node definitions...");
-            try {
-                LiteGraph.clearRegisteredTypes();
+            // --- Event Listeners ---
+            Object.values(filterCheckboxes).forEach(cb => cb.addEventListener('change', applyLogFilters));
+            toggleLogButton.addEventListener('click', () => {
+                logPanelVisible = !logPanelVisible;
+                logPanel.style.display = logPanelVisible ? 'flex' : 'none';
+                toggleLogButton.textContent = logPanelVisible ? 'Hide Logs' : 'Show Logs';
+            });
+            clearLogButton.addEventListener('click', () => { logContent.innerHTML = ''; });
 
-                const response = await fetch('/get_nodes');
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const nodeBlueprints = await response.json();
-                console.log("Received blueprints:", nodeBlueprints);
-
-                if (!nodeBlueprints || nodeBlueprints.length === 0) {
-                    log("Warning: No node definitions received from backend.");
-                }
-
-                nodeBlueprints.forEach(blueprint => {
-                    function DynamicNode() {
-                        const that = this; // Keep reference to 'this'
-                        this.serialize_widgets = true;
-                        this.properties = this.properties || {};
-
-                        // ====================================================================
-                        // Part 1: WIDGETS & STATIC SOCKETS
-                        // ====================================================================
-                        // Setup static widgets from blueprint
-                        blueprint.widgets.forEach(widgetDef => {
-                            const { name, type, default: defaultValue, properties: widgetProps } = widgetDef;
-                            if (that.properties[name] === undefined) that.properties[name] = defaultValue;
-                            
-                            const options = { ...widgetProps, property: name };
-                            let liteGraphWidgetType = type.toLowerCase();
-                            if (type.toUpperCase() === "BOOLEAN") liteGraphWidgetType = "toggle";
-
-                            if (type.toUpperCase() === "COMBO") {
-                                that.addWidget("combo", name, that.properties[name], value => that.properties[name] = value, { values: options.values || [] });
-                            } else {
-                                that.addWidget(liteGraphWidgetType, name, that.properties[name], null, options);
-                            }
-                        });
-
-                        // Setup static (non-array) inputs and outputs
-                        blueprint.inputs.forEach(input => !input.array && that.addInput(input.name, input.type));
-                        blueprint.outputs.forEach(output => !output.array && that.addOutput(output.name, output.type));
-
-                        // ====================================================================
-                        // Part 2: DYNAMIC SLOT MANAGEMENT
-                        // ====================================================================
-                        const findLastSlot = (basename, type) => {
-                            const slots = (type === 'input' ? that.inputs : that.outputs) || [];
-                            return slots.filter(s => s.name.startsWith(basename + '_'))
-                                        .map(s => ({ ...s, index: (type === 'input' ? that.inputs : that.outputs).indexOf(s) }))
-                                        .sort((a, b) => parseInt(a.name.split('_').pop()) - parseInt(b.name.split('_').pop()))
-                                        .pop();
-                        };
-
-                        const updateDynamicWidgets = () => {
-                            // Remove all existing dynamic buttons to prevent duplicates
-                            that.widgets = (that.widgets || []).filter(w => !w.isDynamicButton);
-
-                            const createButton = (name, callback) => {
-                                const button = that.addWidget("button", name, "", callback);
-                                button.isDynamicButton = true;
-                            };
-
-                            // Add buttons for dynamic INPUTS
-                            blueprint.inputs.filter(i => i.array).forEach(inputDef => {
-                                createButton(`+ ${inputDef.name}`, () => addDynamicSlot(inputDef.name, inputDef.type, 'input'));
-                                if (findLastSlot(inputDef.name, 'input')) {
-                                    createButton(`- ${inputDef.name}`, () => removeDynamicSlot(inputDef.name, 'input'));
-                                }
-                            });
-
-                            // Add buttons for dynamic OUTPUTS
-                            blueprint.outputs.filter(o => o.array).forEach(outputDef => {
-                                createButton(`+ ${outputDef.name}`, () => addDynamicSlot(outputDef.name, outputDef.type, 'output'));
-                                if (findLastSlot(outputDef.name, 'output')) {
-                                    createButton(`- ${outputDef.name}`, () => removeDynamicSlot(outputDef.name, 'output'));
-                                }
-                            });
-                            that.setDirtyCanvas(true, true);
-                        };
-
-                        const addDynamicSlot = (basename, type, slotType) => {
-                            const collection = slotType === 'input' ? that.inputs : that.outputs;
-                            const existingSlots = collection ? collection.filter(s => s.name.startsWith(basename + "_")) : [];
-                            const existingIndices = new Set(existingSlots.map(s => parseInt(s.name.split('_').pop())));
-                            let newIndex = 0;
-                            while (existingIndices.has(newIndex)) newIndex++;
-                            
-                            const newName = `${basename}_${newIndex}`;
-                            if (slotType === 'input') that.addInput(newName, type);
-                            else that.addOutput(newName, type);
-                            
-                            updateDynamicWidgets();
-                        };
-
-                        const removeDynamicSlot = (basename, slotType) => {
-                            const lastSlot = findLastSlot(basename, slotType);
-                            if (lastSlot) {
-                                if (slotType === 'input') that.removeInput(lastSlot.index);
-                                else that.removeOutput(lastSlot.index);
-                                updateDynamicWidgets();
-                            }
-                        };
-
-                        // ====================================================================
-                        // Part 3: LIFECYCLE HOOKS
-                        // ====================================================================
-                        this.onAdded = function() {
-                            // Use a timeout to ensure the node has been fully configured from any loaded data
-                            setTimeout(() => updateDynamicWidgets(), 10);
-                        };
-                        
-                        this.onConnectionsChange = function() {
-                            // Also update on connection change to ensure buttons are correct
-                            setTimeout(() => updateDynamicWidgets(), 10);
-                        };
-                    }
-
-                    DynamicNode.title = blueprint.name;
-                    DynamicNode.category = blueprint.category;
-                    
-                    LiteGraph.registerNodeType(`${blueprint.category}/${blueprint.name}`, DynamicNode);
-                });
-                log("Nodes loaded. Right-click to add nodes.");
-            } catch (error) {
-                log("Error loading node definitions.");
-                console.error("Fetch Error:", error);
-            }
+            toggleDisplayButton.addEventListener('click', () => toggleDisplayPanel());
+            clearDisplayBtn.addEventListener('click', () => sendWsMessage({ action: 'clear_display_context' }));
 
             runButton.addEventListener("click", () => {
-                const selected_nodes_map = canvas.selected_nodes;
-                const selected_ids = Object.keys(selected_nodes_map);
-
-                if (selected_ids.length === 0) {
-                    alert("Please select a node to start the workflow from.");
-                    return;
-                }
-                const start_node_id = selected_ids[0];
-
-                if (ws.readyState === WebSocket.OPEN) {
-                    log("Sending graph to backend...");
-                    setWorkflowRunningState(true);
-                    const graphData = graph.serialize();
-                    ws.send(JSON.stringify({
-                        action: "run",
-                        graph: graphData,
-                        start_node_id: start_node_id
-                    }));
-                } else {
-                    log("Cannot run. WebSocket is not connected.");
-                }
+                const startNode = Object.values(canvas.selected_nodes)[0];
+                if (!startNode) { alert("Please select a node to start the workflow from."); return; }
+                setWorkflowRunningState(true);
+                sendWsMessage({ action: "run", graph: graph.serialize(), start_node_id: startNode.id });
             });
-
-            stopButton.addEventListener("click", () => {
-                if (ws.readyState === WebSocket.OPEN) {
-                    log("Requesting to stop all workflows...");
-                    ws.send(JSON.stringify({ action: "stop" }));
-                } else {
-                    log("Cannot stop. WebSocket is not connected.");
-                }
-            });
-
+            stopButton.addEventListener("click", () => sendWsMessage({ action: "stop" }));
             listenButton.addEventListener("click", () => {
-                if (ws.readyState === WebSocket.OPEN) {
-                    log("Requesting to start event listeners...");
-                    setListeningState(true);
-                    ws.send(JSON.stringify({
-                        action: "start_listening",
-                        graph: graph.serialize()
-                    }));
-                } else {
-                    log("Cannot listen. WebSocket is not connected.");
-                }
+                setListeningState(true);
+                sendWsMessage({ action: "start_listening", graph: graph.serialize() });
             });
-
             stopListenButton.addEventListener("click", () => {
-                if (ws.readyState === WebSocket.OPEN) {
-                    log("Requesting to stop event listeners...");
-                    setListeningState(false);
-                    ws.send(JSON.stringify({ action: "stop_listening" }));
-                } else {
-                    log("Cannot stop listening. WebSocket is not connected.");
-                }
+                setListeningState(false);
+                sendWsMessage({ action: "stop_listening" });
             });
-            
+
             saveButton.addEventListener("click", () => {
-                log("Saving workflow...");
-                try {
-                    const selected_nodes_map = canvas.selected_nodes;
-                    const selected_ids = Object.keys(selected_nodes_map);
-                    const start_node_id = selected_ids.length > 0 ? selected_ids[0] : null;
-
-                    const data = {
-                        graph_data: graph.serialize(),
-                        start_node_id: start_node_id
-                    };
-
-                    const json = JSON.stringify(data, null, 2);
-                    const blob = new Blob([json], { type: "application/json" });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = "workflow.json";
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    log("Workflow saved.");
-                } catch (e) {
-                    log("Error saving workflow.");
-                    console.error(e);
-                }
+                const data = JSON.stringify({ graph_data: graph.serialize() }, null, 2);
+                const blob = new Blob([data], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "workflow.json";
+                a.click();
+                URL.revokeObjectURL(url);
             });
-
             loadButton.addEventListener("click", () => {
                 const input = document.createElement("input");
                 input.type = "file";
@@ -626,49 +438,110 @@
                 input.onchange = e => {
                     const file = e.target.files[0];
                     if (!file) return;
-                    
-                    log("Loading workflow...");
                     const reader = new FileReader();
                     reader.onload = readerEvent => {
-                        try {
-                            const content = readerEvent.target.result;
-                            const data = JSON.parse(content);
-
-                            let graphData;
-                            let startNodeId = null;
-
-                            // Backwards compatibility check
-                            if (data.graph_data && data.hasOwnProperty('start_node_id')) {
-                                graphData = data.graph_data;
-                                startNodeId = data.start_node_id;
-                            } else {
-                                // Assume old format
-                                graphData = data;
-                            }
-
-                            graph.configure(graphData);
-
-                            if (startNodeId) {
-                                const nodeToSelect = graph.getNodeById(startNodeId);
-                                if (nodeToSelect) {
-                                    canvas.selectNode(nodeToSelect);
-                                }
-                            }
-
-                            log("Workflow loaded successfully.");
-                        } catch (err) {
-                            log("Error loading or parsing workflow file.");
-                            console.error(err);
-                        }
-                    };
-                    reader.onerror = err => {
-                        log("Error reading file.");
-                        console.error(err);
+                        const data = JSON.parse(readerEvent.target.result);
+                        graph.configure(data.graph_data || data);
                     };
                     reader.readAsText(file);
                 };
                 input.click();
             });
+
+            saveDisplayBtn.addEventListener("click", () => {
+                const data = JSON.stringify({ graph_hash: localGraphHash, context: localDisplayContext }, null, 2);
+                const blob = new Blob([data], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "display_context.json";
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+            loadDisplayBtn.addEventListener("click", () => {
+                const input = document.createElement("input");
+                input.type = "file";
+                input.accept = ".json,application/json";
+                input.onchange = e => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = readerEvent => {
+                        const payload = JSON.parse(readerEvent.target.result);
+                        sendWsMessage({ action: 'load_display_context', payload });
+                    };
+                    reader.readAsText(file);
+                };
+                input.click();
+            });
+
+            // --- Initialization ---
+            const resizeCanvas = () => canvas.resize(window.innerWidth, window.innerHeight);
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+            connectWebSocket();
+
+            log("Fetching node definitions...");
+            try {
+                LiteGraph.clearRegisteredTypes();
+                const response = await fetch('/get_nodes');
+                const nodeBlueprints = await response.json();
+                nodeBlueprints.forEach(blueprint => {
+                    function DynamicNode() {
+                        this.serialize_widgets = true;
+                        this.properties = this.properties || {};
+                        blueprint.widgets.forEach(w => {
+                            if (this.properties[w.name] === undefined) this.properties[w.name] = w.default;
+                            const options = { ...w.properties, property: w.name };
+                            let type = w.type.toLowerCase();
+                            if (type === "boolean") type = "toggle";
+                            if (type === "combo") this.addWidget("combo", w.name, this.properties[w.name], v => this.properties[w.name] = v, { values: options.values || [] });
+                            else this.addWidget(type, w.name, this.properties[w.name], null, options);
+                        });
+                        blueprint.inputs.forEach(i => !i.array && this.addInput(i.name, i.type));
+                        blueprint.outputs.forEach(o => !o.array && this.addOutput(o.name, o.type));
+                        
+                        const updateDynamicWidgets = () => {
+                            this.widgets = (this.widgets || []).filter(w => !w.isDynamicButton);
+                            const createBtn = (name, cb) => { const btn = this.addWidget("button", name, "", cb); btn.isDynamicButton = true; };
+                            const findLast = (basename, type) => (type === 'input' ? this.inputs : this.outputs)?.filter(s => s.name.startsWith(basename + '_')).map(s => ({ ...s, index: (type === 'input' ? this.inputs : this.outputs).indexOf(s) })).sort((a, b) => parseInt(a.name.split('_').pop()) - parseInt(b.name.split('_').pop())).pop();
+                            
+                            blueprint.inputs.filter(i => i.array).forEach(i => {
+                                createBtn(`+ ${i.name}`, () => add(i.name, i.type, 'input'));
+                                if (findLast(i.name, 'input')) createBtn(`- ${i.name}`, () => remove(i.name, 'input'));
+                            });
+                            blueprint.outputs.filter(o => o.array).forEach(o => {
+                                createBtn(`+ ${o.name}`, () => add(o.name, o.type, 'output'));
+                                if (findLast(o.name, 'output')) createBtn(`- ${o.name}`, () => remove(o.name, 'output'));
+                            });
+                            this.setDirtyCanvas(true, true);
+                        };
+                        const add = (basename, type, slotType) => {
+                            const collection = slotType === 'input' ? this.inputs : this.outputs;
+                            const existing = new Set((collection || []).filter(s => s.name.startsWith(basename + "_")).map(s => parseInt(s.name.split('_').pop())));
+                            let i = 0;
+                            while (existing.has(i)) i++;
+                            if (slotType === 'input') this.addInput(`${basename}_${i}`, type); else this.addOutput(`${basename}_${i}`, type);
+                            updateDynamicWidgets();
+                        };
+                        const remove = (basename, slotType) => {
+                            const last = findLast(basename, slotType);
+                            if (last) {
+                                if (slotType === 'input') this.removeInput(last.index); else this.removeOutput(last.index);
+                                updateDynamicWidgets();
+                            }
+                        };
+                        this.onAdded = this.onConnectionsChange = () => setTimeout(() => updateDynamicWidgets(), 10);
+                    }
+                    DynamicNode.title = blueprint.name;
+                    DynamicNode.category = blueprint.category;
+                    LiteGraph.registerNodeType(`${blueprint.category}/${blueprint.name}`, DynamicNode);
+                });
+                log("Nodes loaded. Right-click to add nodes.");
+            } catch (error) {
+                log("Error loading node definitions.");
+                console.error("Fetch Error:", error);
+            }
 
             graph.start();
         })();

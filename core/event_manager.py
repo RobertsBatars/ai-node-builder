@@ -4,9 +4,10 @@ import uuid
 from collections import defaultdict
 
 class EventManager:
-    def __init__(self, engine, websocket):
+    def __init__(self, engine, websocket, global_state):
         self.engine = engine
         self.websocket = websocket
+        self.global_state = global_state
         self.listening_nodes = {} # {node_id: node_instance}
         self.active_listeners = {} # {node_id: asyncio.Task}
 
@@ -43,7 +44,8 @@ class EventManager:
                         graph_data=current_graph_data, 
                         start_node_id=start_node_id, 
                         websocket=self.websocket, 
-                        run_id=run_id, 
+                        run_id=run_id,
+                        global_state=self.global_state,
                         initial_payload=payload
                     )
                 )

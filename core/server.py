@@ -17,8 +17,11 @@ app = FastAPI()
 engine = NodeEngine()
 
 # --- Global State Management ---
-# These dictionaries manage the state for all connected clients.
-# A client is identified by their WebSocket object.
+GLOBAL_DISPLAY_STATE = {
+    "display_context": [],
+    "graph_hash": None
+}
+ACTIVE_WEBSOCKET = None
 
 # {run_id: asyncio.Task} - Keeps track of all running workflow tasks globally.
 active_workflows = {} 
@@ -40,12 +43,28 @@ async def get_nodes():
     blueprints_object = json.loads(blueprints_json_string)
     return JSONResponse(content=blueprints_object)
 
+async def broadcast_to_frontend(message: dict):
+    if ACTIVE_WEBSOCKET:
+        try:
+            await ACTIVE_WEBSOCKET.send_json(message)
+        except Exception as e:
+            print(f"Failed to broadcast message: {e}")
+
+# Set the callback on the engine instance
+engine.set_broadcast_callback(broadcast_to_frontend)
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Handles the real-time communication with the frontend."""
+    global ACTIVE_WEBSOCKET
     await websocket.accept()
+    ACTIVE_WEBSOCKET = websocket
+    print("Frontend connected. Active WebSocket set.")
+    
     # Create and store an EventManager for this client session
-    event_managers[websocket] = EventManager(engine, websocket)
+    # Pass the global state to the event manager so it can pass it to event-triggered workflows
+    event_managers[websocket] = EventManager(engine, websocket, GLOBAL_DISPLAY_STATE)
 
     def on_task_done(run_id, ws):
         """Callback to clean up a finished task."""
@@ -62,7 +81,29 @@ async def websocket_endpoint(websocket: WebSocket):
             action = data.get("action")
             graph_data = data.get("graph")
 
-            if action == "run":
+            if action == "get_initial_context":
+                await websocket.send_json({
+                    "type": "display_context_state",
+                    "payload": GLOBAL_DISPLAY_STATE
+                })
+
+            elif action == "load_display_context":
+                loaded_data = data.get("payload", {})
+                GLOBAL_DISPLAY_STATE["display_context"] = loaded_data.get("context", [])
+                GLOBAL_DISPLAY_STATE["graph_hash"] = loaded_data.get("graph_hash")
+                await broadcast_to_frontend({
+                    "type": "display_context_state",
+                    "payload": GLOBAL_DISPLAY_STATE
+                })
+
+            elif action == "clear_display_context":
+                GLOBAL_DISPLAY_STATE["display_context"].clear()
+                # Reset the hash and warning flags as well
+                GLOBAL_DISPLAY_STATE.pop("initial_graph_hash", None)
+                GLOBAL_DISPLAY_STATE.pop("warning_issued", None)
+                await broadcast_to_frontend({"type": "display_context_cleared"})
+
+            elif action == "run":
                 run_id = "frontend_run"
                 # If a frontend-initiated workflow is already running, cancel it before starting a new one.
                 if websocket in client_tasks and run_id in client_tasks[websocket]:
@@ -74,7 +115,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text(json.dumps({"type": "error", "message": "No start node selected."}))
                     continue
 
-                task = asyncio.create_task(engine.run_workflow(graph_data, str(start_node_id), websocket, run_id))
+                task = asyncio.create_task(engine.run_workflow(graph_data, str(start_node_id), websocket, run_id, GLOBAL_DISPLAY_STATE))
                 active_workflows[run_id] = task
                 client_tasks[websocket].add(run_id)
                 task.add_done_callback(lambda t: on_task_done(run_id, websocket))
@@ -97,7 +138,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 # Instantiate all nodes to find the event nodes
                 all_nodes = [
-                    engine.node_classes[n['type'].split('/')[-1]](engine, n, {}, None)
+                    engine.node_classes[n['type'].split('/')[-1]](engine, n, {}, None, GLOBAL_DISPLAY_STATE)
                     for n in graph_data['nodes'] if n['type'].split('/')[-1] in engine.node_classes
                 ]
                 event_nodes = [node for node in all_nodes if isinstance(node, EventNode)]
@@ -121,6 +162,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect:
         print(f"Client {websocket.client} disconnected.")
+        ACTIVE_WEBSOCKET = None
         # If the client disconnects, cancel all their running tasks
         if websocket in client_tasks:
             for run_id in client_tasks[websocket]:

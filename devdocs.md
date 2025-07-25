@@ -133,6 +133,22 @@ To move beyond a single, user-initiated workflow, an event-driven architecture w
 *   **Server State Management**:
     *   The server (`core/server.py`) was significantly updated to manage the more complex state. It now tracks multiple workflow tasks and `EventManager` instances per client, ensuring that all processes are correctly started and cleaned up, even on unexpected disconnects.
 
+### **3.8. Persistent Display Context and Workflow Verification**
+
+To provide a more persistent, chat-like interface for workflows, a global "Display Panel" was implemented. This feature required careful state management to ensure that the context was meaningful even when the underlying workflow changed.
+
+*   **Global Display State**: A single, global dictionary (`GLOBAL_DISPLAY_STATE`) was created on the server (`core/server.py`). This state is not tied to a specific workflow run and persists for the lifetime of the server process. It contains the list of display messages and the structural hash of the workflow that started the context.
+
+*   **The `DisplayOutputNode`**: A new node was created (`nodes/display_nodes.py`) that, when executed, appends its input data to this global context. It also sends a message to the client to update the UI in real-time.
+
+*   **Workflow Change Detection**: A key challenge is ensuring the user is aware that a saved context might not be relevant to a modified workflow.
+    1.  **Structural Hashing**: The engine (`core/engine.py`) generates a SHA256 hash of the workflow's structure (node types and their connections, ignoring cosmetic details like node positions).
+    2.  **Initial Hash Storage**: When the *first* message is added to a currently empty display context, the engine stores the current workflow's hash in the `GLOBAL_DISPLAY_STATE` as the `initial_graph_hash`.
+    3.  **Verification on Run**: On every subsequent workflow run, the engine generates a new hash of the current graph. It compares this new hash to the `initial_graph_hash`.
+    4.  **Warning Injection**: If the hashes do not match, the engine injects a special "warning" message into the display context. This message is rendered differently in the UI, immediately alerting the user that the context may be from a different version of the workflow and that node-based filtering might be unreliable. This warning is re-injected on every run of the modified workflow until the context is cleared.
+
+*   **State Management**: The server provides WebSocket actions to `get_initial_context`, `load_display_context` from a file, and `clear_display_context`. Clearing the context also resets the `initial_graph_hash` and the warning flags, allowing a new session to begin.
+
 ## **4. Node Implementation and Framework (Successful Components)**
 
 ### **4.1. The BaseNode and EventNode Abstract Classes**
@@ -140,6 +156,7 @@ To move beyond a single, user-initiated workflow, an event-driven architecture w
 The foundation of the framework is the `BaseNode` class, which is an **Abstract Base Class (ABC)**.
 
 * **Why an ABC?** This Python feature acts as a strict contract. It enforces that every new node *must* implement the required `load()` and `execute()` methods, preventing incomplete nodes from being loaded and ensuring a consistent structure across the application.
+* **Global State Access**: The `BaseNode` constructor was updated to accept the `global_state` dictionary, giving every node instance read/write access to the persistent display context.
 
 To support the event-driven model, a new `EventNode` ABC was introduced, inheriting from `BaseNode`. It adds a new contract for nodes that are intended to start workflows:
 *   `async def start_listening(self, trigger_workflow_callback)`

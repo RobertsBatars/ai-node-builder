@@ -55,4 +55,37 @@ class AssertNode(BaseNode):
             # The exception remains the primary failure mechanism for the engine
             raise AssertionError(f"Assertion Failed: Actual value '{actual_val}' does not match expected value '{expected_val}'.")
 
+class TestDisplayFeatureNode(BaseNode):
+    """
+    A self-contained node to test the display feature end-to-end.
+    """
+    CATEGORY = "Test"
+    # No inputs/outputs needed
+    
+    def load(self):
+        pass
+
+    async def execute(self):
+        import time
+        my_id = self.node_info.get('id')
+        test_message = f"Test message from {my_id} at {time.time()}"
+        
+        # 1. Send a message to the display
+        display_payload = {"node_title": "Test Node", "content_type": "text", "data": test_message}
+        context_entry = {"node_id": my_id, **display_payload}
+        
+        self.global_state['display_context'].append(context_entry)
+        await self.send_message_to_client(MessageType.DISPLAY, display_payload)
+        
+        # 2. Retrieve context and verify the message was added
+        retrieved_context = self.global_state['display_context']
+        found = any(msg.get('data') == test_message and msg.get('node_id') == my_id for msg in retrieved_context)
+        
+        if found:
+            await self.send_message_to_client(MessageType.LOG, {"message": "SUCCESS: Test node found its message in the global context."})
+        else:
+            await self.send_message_to_client(MessageType.ERROR, {"message": "FAILURE: Test node did not find its message in the global context."})
+        
+        return ()
+
 

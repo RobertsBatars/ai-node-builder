@@ -28,6 +28,24 @@ current_count = self.memory.get('count', 0)
 self.memory['count'] = current_count + 1
 ```
 
+### Global State: The `self.global_state` Attribute
+
+In addition to the run-specific `self.memory`, every node instance also has access to `self.global_state`. This is a dictionary that is shared across **all workflows and all nodes** and persists for the entire lifetime of the server.
+
+It is primarily used for the **Display Panel** context. You can read from it to get the current display history or write to it to add new messages.
+
+**Use `self.global_state` with caution.** Since it is shared everywhere, changes made by one workflow will be immediately visible to all others.
+
+```python
+# Get a (deep) copy of the entire display history
+display_history = copy.deepcopy(self.global_state.get('display_context', []))
+
+# Add a new message to the global display context
+# Note: This is typically handled by the DisplayOutputNode.
+new_message = {"node_id": self.node_info.get('id'), "content_type": "text", "data": "Hello from my node!"}
+self.global_state['display_context'].append(new_message)
+```
+
 ### Sockets: Inputs and Outputs
 
 Sockets are the connection points on a node for data to flow in and out.
@@ -471,6 +489,22 @@ To keep messages consistent and easy to filter, you must specify a message type 
 - `MessageType.DEBUG`: For more verbose, developer-focused information.
 - `MessageType.TEST_EVENT`: For messages specifically intended for a test runner to capture.
 - `MessageType.ERROR`: For reporting non-fatal errors from within a node.
+- `MessageType.DISPLAY`: For sending content to the persistent Display Panel in the UI.
+
+### Sending to the Display Panel
+
+Sending content to the Display Panel uses a specific payload structure with `MessageType.DISPLAY`. This allows you to send rich content like text, images, and videos.
+
+The `data_dict` for a `DISPLAY` message must contain the following keys:
+-   `"node_title"`: The title to be displayed in the message header. You can get this from `self.node_info.get('title', self.__class__.__name__)`.
+-   `"content_type"`: A string specifying how the frontend should render the data. Supported types are:
+    -   `"text"`: Renders the `data` as plain text.
+    -   `"image"`: Renders the `data` as an image. The `data` should be a URL or a base64-encoded data URI.
+    -   `"video"`: Renders the `data` as a video. The `data` should be a URL to the video file.
+    -   `"warning"`: Renders the `data` as a distinct warning message.
+-   `"data"`: The actual content to be displayed.
+
+The `DisplayOutputNode` is a pre-built example that handles this for you, but you can use this mechanism in any custom node.
 
 ### Example: A Node that Logs its Progress
 
@@ -493,6 +527,17 @@ class LoggingProcessorNode(BaseNode):
             {"message": f"Started processing data: {data_in}"}
         )
 
+        # --- Sending an IMAGE to the Display Panel ---
+        # (Assuming data_in is a URL to an image)
+        await self.send_message_to_client(
+            MessageType.DISPLAY,
+            {
+                "node_title": self.node_info.get('title', self.__class__.__name__),
+                "content_type": "image",
+                "data": data_in 
+            }
+        )
+
         # Simulate some work
         await asyncio.sleep(2) 
         processed_data = str(data_in).upper()
@@ -510,7 +555,7 @@ class LoggingProcessorNode(BaseNode):
 - Your node's `execute` method must be `async def`.
 - Import `MessageType` from `core.definitions`.
 - Call `await self.send_message_to_client(message_type, data_dict)`.
-- The `data_dict` is a standard Python dictionary containing whatever information you want to send.
+- The `data_dict` is a standard Python dictionary containing whatever information you want to send. For `DISPLAY` messages, it must follow the specific structure outlined above.
 - The client is responsible for deciding how to display or handle these messages.
 
 ---

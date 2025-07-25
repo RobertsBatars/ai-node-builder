@@ -18,6 +18,7 @@ class MessageType(Enum):
     DEBUG = "debug"      # For detailed, verbose information for developers
     TEST_EVENT = "test"  # For events specifically related to testing, like an assertion
     ERROR = "error"      # For reporting non-fatal errors from within a node
+    DISPLAY = "display"  # For rich content display
 
 class SocketType(Enum):
     """
@@ -67,11 +68,12 @@ class BaseNode(ABC):
     INPUT_SOCKETS = {}
     OUTPUT_SOCKETS = {}
 
-    def __init__(self, engine, node_info, memory, run_id=None):
+    def __init__(self, engine, node_info, memory, run_id, global_state):
         self.engine = engine
         self.node_info = node_info
         self.memory = memory
         self.run_id = run_id
+        self.global_state = global_state
         
         self.widget_values = {}
         if 'widgets_values' in self.node_info and self.node_info['widgets_values'] is not None:
@@ -85,19 +87,18 @@ class BaseNode(ABC):
                     self.widget_values[widget_name] = value
 
     async def send_message_to_client(self, message_type: MessageType, data: dict):
-        """Sends a structured, type-safe message to the connected client."""
-        if hasattr(self, '_websocket') and self._websocket:
-            full_message = {
-                "source": "node",
-                "type": message_type.value, # Use the enum's value for the JSON string
-                "run_id": self.run_id,
-                "payload": {
-                    "node_id": self.node_info.get('id'),
-                    "node_type": self.__class__.__name__,
-                    "data": data
-                }
+        """Sends a structured, type-safe message to the connected client via the engine's broadcast system."""
+        full_message = {
+            "source": "node",
+            "type": message_type.value, # Use the enum's value for the JSON string
+            "run_id": self.run_id,
+            "payload": {
+                "node_id": self.node_info.get('id'),
+                "node_type": self.__class__.__name__,
+                "data": data
             }
-            await self._websocket.send_text(json.dumps(full_message))
+        }
+        await self.engine.broadcast(full_message)
 
     def get_input_name_by_slot(self, slot_index):
         """Helper to find an input socket's name by its position."""
