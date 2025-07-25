@@ -63,7 +63,9 @@ What happens if you set both `is_dependency: True` and `do_not_wait: True` on th
 
 ### Widgets
 
-Widgets are UI elements that appear on the node in the frontend, allowing users to input static values. They are defined as class attributes using the `InputWidget` class from `core.definitions`. The frontend currently supports `TEXT` and `NUMBER` widgets.
+Widgets are UI elements that appear on the node in the frontend, allowing users to input static values. They are defined as class attributes using the `InputWidget` class from `core.definitions`. 
+
+For a complete list of available widgets and their properties, see [section 5](#5-available-widgets-and-properties).
 
 ---
 
@@ -247,7 +249,7 @@ class SplitTextNode(BaseNode):
 -   **For outputs**, the corresponding return value from your `execute` method must be a Python `list`.
 -   The `is_dependency` flag is often useful for array inputs to ensure all connected data is available before execution if the connected data nodes are not expected to push data on their own.
 
-## 5. Available Widgets and Properties
+## 5. Available Widgets and Properties {#5-available-widgets-and-properties}
 
 The frontend determines which UI widgets to render based on the `widget_type` string. Here are the currently supported types:
 
