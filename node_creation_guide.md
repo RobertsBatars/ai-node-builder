@@ -249,7 +249,7 @@ class SplitTextNode(BaseNode):
 -   **For outputs**, the corresponding return value from your `execute` method must be a Python `list`.
 -   The `is_dependency` flag is often useful for array inputs to ensure all connected data is available before execution if the connected data nodes are not expected to push data on their own.
 
-## 5. Available Widgets and Properties {#5-available-widgets-and-properties}
+## 5. Available Widgets and Properties
 
 The frontend determines which UI widgets to render based on the `widget_type` string. Here are the currently supported types:
 
