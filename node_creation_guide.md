@@ -732,9 +732,249 @@ The `LLMNode` demonstrates advanced features like:
 - Universal AI model access via litellm
 - Context integration from display panel and runtime memory
 - Multimodal support (text + images)
-- Tool calling system (⚠️ **Not fully tested**)
+- **Fully implemented and tested** tool calling system with MCP-inspired design
 
-## 12. Best Practices and Considerations
+## 12. Creating Tool Nodes for LLM Integration
+
+Tool nodes are special nodes designed to work with the `LLMNode`'s **fully tested and functional** tool calling system. They follow **Model Context Protocol (MCP)**-inspired patterns and operate in dual modes to support AI tool calling workflows.
+
+### Tool Node Architecture
+
+Tool nodes have a unique dual-operation architecture:
+1. **Definition Mode**: When called with `tool_call=None`, they return their tool schema/definition
+2. **Execution Mode**: When called with actual tool call data, they process the request and return results
+
+This dual mode allows the LLM to first discover available tools, then execute them when needed.
+
+### Basic Tool Node Structure
+
+Here's the essential structure for a tool node:
+
+```python
+from core.definitions import BaseNode, SocketType
+
+class MyToolNode(BaseNode):
+    CATEGORY = "Tools"
+    
+    # Tool nodes have a single input that can receive tool calls
+    INPUT_SOCKETS = {
+        "tool_call": {"type": SocketType.ANY, "do_not_wait": True}
+    }
+    
+    # Tool nodes have a single output for results
+    OUTPUT_SOCKETS = {
+        "output": {"type": SocketType.ANY}
+    }
+    
+    def load(self):
+        # Initialize any required data structures
+        pass
+    
+    def execute(self, tool_call=None):
+        # Define the tool schema (MCP-inspired)
+        tool_definition = {
+            "name": "my_tool",
+            "description": "What this tool does",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "param1": {
+                        "type": "string",
+                        "description": "Description of parameter 1"
+                    }
+                },
+                "required": ["param1"]
+            }
+        }
+        
+        # If no tool call provided, return the tool definition
+        if tool_call is None:
+            return (tool_definition,)
+        
+        # Process the actual tool call
+        try:
+            if isinstance(tool_call, dict) and 'arguments' in tool_call:
+                args = tool_call['arguments']
+                # Extract parameters from the arguments
+                param1 = args.get('param1', '')
+                
+                # Perform the tool's logic
+                result = f"Processed: {param1}"
+                
+                # Return structured result
+                tool_result = {
+                    "id": tool_call.get('id', 'unknown'),
+                    "result": result
+                }
+                return (tool_result,)
+            else:
+                # Handle invalid tool call format
+                error_result = {
+                    "id": tool_call.get('id', 'error'),
+                    "error": "Invalid tool call format"
+                }
+                return (error_result,)
+        except Exception as e:
+            # Handle exceptions gracefully
+            error_result = {
+                "id": tool_call.get('id', 'exception'),
+                "error": f"Tool error: {str(e)}"
+            }
+            return (error_result,)
+```
+
+### Key Requirements for Tool Nodes
+
+1. **Socket Configuration**:
+   - Single input socket named `tool_call` with `"do_not_wait": True`
+   - Single output socket named `output`
+
+2. **Dual Mode Operation**:
+   - Return tool definition when `tool_call=None`
+   - Process and return results when `tool_call` contains data
+
+3. **MCP-Inspired Schema**:
+   - Use JSON Schema format for `input_schema`
+   - Include `name`, `description`, and `input_schema` in definition
+   - Follow standard JSON Schema property definitions
+
+4. **Structured Results**:
+   - Always return results in `{"id": ..., "result": ...}` format
+   - Handle errors with `{"id": ..., "error": ...}` format
+   - Use the tool call ID for proper message correlation
+
+### Example: Calculator Tool Node
+
+Here's a complete example of a calculator tool that performs basic arithmetic:
+
+```python
+from core.definitions import BaseNode, SocketType
+
+class CalculatorToolNode(BaseNode):
+    """
+    A calculator tool that performs basic arithmetic operations.
+    Demonstrates proper tool node implementation with error handling.
+    """
+    CATEGORY = "Tools"
+    
+    INPUT_SOCKETS = {
+        "tool_call": {"type": SocketType.ANY, "do_not_wait": True}
+    }
+    
+    OUTPUT_SOCKETS = {
+        "output": {"type": SocketType.ANY}
+    }
+
+    def load(self):
+        pass
+
+    def execute(self, tool_call=None):
+        # Define the tool schema (MCP-inspired)
+        tool_definition = {
+            "name": "calculator",
+            "description": "Perform basic arithmetic operations (add, subtract, multiply, divide)",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "enum": ["add", "subtract", "multiply", "divide"],
+                        "description": "The arithmetic operation to perform"
+                    },
+                    "a": {
+                        "type": "number",
+                        "description": "First number"
+                    },
+                    "b": {
+                        "type": "number",
+                        "description": "Second number"
+                    }
+                },
+                "required": ["operation", "a", "b"]
+            }
+        }
+        
+        # If no tool call provided, return the tool definition
+        if tool_call is None:
+            return (tool_definition,)
+        
+        # Process the tool call
+        try:
+            if isinstance(tool_call, dict) and 'arguments' in tool_call:
+                args = tool_call['arguments']
+                operation = args.get('operation')
+                a = float(args.get('a', 0))
+                b = float(args.get('b', 0))
+                
+                # Perform the calculation
+                if operation == "add":
+                    result = a + b
+                elif operation == "subtract":
+                    result = a - b
+                elif operation == "multiply":
+                    result = a * b
+                elif operation == "divide":
+                    if b == 0:
+                        return ({
+                            "id": tool_call.get('id', 'calc_error'),
+                            "error": "Division by zero is not allowed"
+                        },)
+                    result = a / b
+                else:
+                    return ({
+                        "id": tool_call.get('id', 'calc_error'),
+                        "error": f"Unknown operation: {operation}"
+                    },)
+                
+                # Return successful result
+                tool_result = {
+                    "id": tool_call.get('id', 'calc_result'),
+                    "result": result
+                }
+                return (tool_result,)
+            else:
+                # Invalid format
+                return ({
+                    "id": tool_call.get('id', 'calc_error'),
+                    "error": "Invalid tool call format"
+                },)
+                
+        except Exception as e:
+            # Handle unexpected errors
+            return ({
+                "id": tool_call.get('id', 'calc_exception'),
+                "error": f"Calculator error: {str(e)}"
+            },)
+```
+
+### Tool Node Best Practices
+
+1. **Always Handle Both Modes**: Check if `tool_call` is None to return definition, otherwise process the call
+
+2. **Robust Error Handling**: Wrap tool execution in try-catch blocks and return structured error responses
+
+3. **Validate Input Parameters**: Check that required parameters are present and have valid types
+
+4. **Use Descriptive Schemas**: Provide clear descriptions for the tool and all its parameters
+
+5. **Preserve Tool Call IDs**: Always include the original tool call ID in results for proper correlation
+
+6. **Handle Edge Cases**: Consider division by zero, missing parameters, invalid types, etc.
+
+7. **Test Thoroughly**: Tool nodes need to work in both definition and execution modes
+
+### Connecting Tools to LLM Node
+
+To use your tool nodes with the LLM node:
+
+1. Connect tool nodes to the LLM node's `tools` array input (they will provide definitions)
+2. Connect the LLM node's `tool_calls` array output back to the same tool nodes (for execution)
+3. The LLM node will automatically route tool calls to the correct tools by name
+4. Tool results will be processed and integrated into the AI conversation
+
+The LLM node handles all the complex routing, message sequencing, and OpenAI API compatibility automatically. This system has been thoroughly tested with multiple tool types and complex tool calling scenarios.
+
+## 13. Best Practices and Considerations
 
 - **Keep Nodes Atomic**: Each node should perform a single, clear task. Instead of one giant node that does three things, create three smaller nodes. This makes your workflows more flexible and easier to debug.
 - **Initialize Memory**: When using stateful nodes, it is best practice to initialize all expected keys for `self.memory` in the `load()` method. This prevents potential `KeyError` exceptions and makes the node's expected state clear.
@@ -742,7 +982,7 @@ The `LLMNode` demonstrates advanced features like:
 - **Return a Tuple**: The `execute` method **must** return a tuple for its outputs, even if there is only one. For a single output, return `(my_value,)`. For no outputs, return `()`. To conditionally prevent an output from firing, return the `SKIP_OUTPUT` object in its place in the tuple.
 - **Clear Naming**: Use descriptive names for your node class, sockets, and widgets. This makes the system easier to use for everyone.
 - **Check the Frontend**: Remember that the `widget_type` you specify in the backend must have a corresponding implementation in `web/index.html` to render correctly.
-- **Test Tool Integration**: If implementing tool-calling nodes, be aware that the tool system has been implemented but not thoroughly tested.
+- **Follow Tool Node Conventions**: When implementing tool-calling nodes, follow the MCP-inspired dual-mode pattern shown in the examples. The tool calling system is fully functional and tested.
 
 
 By following this guide, you can extend the AI Node Builder with powerful, custom functionality. Happy building!

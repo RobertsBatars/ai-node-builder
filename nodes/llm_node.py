@@ -3,7 +3,7 @@ import json
 import base64
 import copy
 from typing import Dict, List, Any, Optional, Tuple
-from core.definitions import BaseNode, SocketType, InputWidget, MessageType
+from core.definitions import BaseNode, SocketType, InputWidget, MessageType, SKIP_OUTPUT, NodeStateUpdate
 
 try:
     import litellm
@@ -19,7 +19,7 @@ class LLMNode(BaseNode):
     
     INPUT_SOCKETS = {
         "prompt": {"type": SocketType.TEXT, "is_dependency": True},
-        "system_prompt": {"type": SocketType.TEXT, "is_dependency": True},
+        "system_prompt": {"type": SocketType.TEXT, "is_dependency": True}, 
         "tools": {"type": SocketType.ANY, "array": True, "is_dependency": True}
     }
     
@@ -60,13 +60,30 @@ class LLMNode(BaseNode):
         if litellm is None:
             raise ImportError("litellm library is required. Install with: pip install litellm")
         
-        # Initialize conversation history in memory
+        # Initialize conversation history and tool definitions in memory
         if 'conversation_history' not in self.memory:
             self.memory['conversation_history'] = []
+        if 'tool_definitions' not in self.memory:
+            self.memory['tool_definitions'] = []
+        if 'pending_tool_calls' not in self.memory:
+            self.memory['pending_tool_calls'] = None
 
     async def execute(self, prompt=None, system_prompt=None, tools=None):
         """Execute the LLM call with context integration and tool support."""
         try:
+            # Check if we received tool results (tools parameter contains results instead of definitions)
+            tool_results = None
+            if tools and isinstance(tools, list) and len(tools) > 0:
+                # Separate tool results from tool definitions
+                actual_tool_results = []
+                for item in tools:
+                    if isinstance(item, dict) and ('result' in item or 'error' in item) and 'id' in item:
+                        actual_tool_results.append(item)
+                
+                if actual_tool_results:
+                    tool_results = actual_tool_results
+                    tools = None  # Clear tools so we use saved definitions
+                    await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Received {len(tool_results)} tool results from previous execution"})
             # Get widget values
             provider_val = self.widget_values.get('provider', self.provider.default)
             model_val = self.widget_values.get('model', self.model.default)
@@ -147,35 +164,79 @@ class LLMNode(BaseNode):
                         preview = msg['content'][:100] + "..." if len(msg['content']) > 100 else msg['content']
                         await self.send_message_to_client(MessageType.DEBUG, {"message": f"  Memory msg {i}: {msg['role']} - {preview}"})
 
-            # Add current prompt
+            # Add current prompt (but not when we're processing tool results)
             current_prompt_added = 0
-            if prompt:
+            if prompt and not tool_results:
                 # Check if prompt contains image data (base64)
                 user_message = self._process_multimodal_input(prompt, full_model)
                 messages.append(user_message)
                 current_prompt_added = 1
                 await self.send_message_to_client(MessageType.LOG, {"message": f"📝 Added current prompt ({len(prompt)} chars)"})
+            elif tool_results:
+                await self.send_message_to_client(MessageType.LOG, {"message": f"🚫 Skipping current prompt - processing tool results (prompt='{prompt}')"})
+
+            # Add tool results if we received them (AFTER display context and memory)
+            tool_results_added = 0
+            if tool_results:
+                await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Processing {len(tool_results)} tool results"})
+                # First add the pending assistant message with tool calls
+                pending_message = self.memory.get('pending_tool_calls')
+                if pending_message:
+                    messages.append(pending_message)
+                    await self.send_message_to_client(MessageType.LOG, {"message": "🔧 Added pending assistant message with tool calls"})
+                    tool_results_added += 1  # Count the assistant message
+                else:
+                    await self.send_message_to_client(MessageType.ERROR, {"message": "🔧 ERROR: No pending tool calls found but tool results received!"})
+                    return ("Error: Tool results received without preceding tool calls", [])
+                
+                # Then add the tool result messages (only for valid results)
+                for tool_result in tool_results:
+                    # Skip None results or results without proper ID
+                    if tool_result is None or not isinstance(tool_result, dict) or 'id' not in tool_result:
+                        continue
+                    
+                    # Add tool result as a tool message
+                    tool_message = {
+                        "role": "tool",
+                        "tool_call_id": tool_result.get('id'),
+                        "content": json.dumps(tool_result.get('result', tool_result.get('error', 'Unknown result')))
+                    }
+                    messages.append(tool_message)
+                    tool_results_added += 1
+                
+                # Clear the pending tool calls since we've used them
+                self.memory['pending_tool_calls'] = None
+                await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Added {tool_results_added} tool-related messages (assistant + tool results)"})
 
             # Log actual vs expected message count to detect deduplication
-            expected_count = (1 if system_prompt else 0) + display_message_count + memory_message_count + current_prompt_added
+            expected_count = (1 if system_prompt else 0) + display_message_count + memory_message_count + tool_results_added + current_prompt_added
             actual_count = len(messages)
             
             if actual_count != expected_count:
                 await self.send_message_to_client(MessageType.LOG, {"message": f"📊 Message count: {actual_count} (expected {expected_count}) - deduplication occurred"})
             else:
-                await self.send_message_to_client(MessageType.LOG, {"message": f"📊 Total messages to send: {actual_count} (system: {1 if system_prompt else 0}, display: {display_message_count}, memory: {memory_message_count}, current: {current_prompt_added})"})
+                await self.send_message_to_client(MessageType.LOG, {"message": f"📊 Total messages to send: {actual_count} (system: {1 if system_prompt else 0}, display: {display_message_count}, memory: {memory_message_count}, tools: {tool_results_added}, current: {current_prompt_added})"})
             
             # Show final message breakdown for debugging
             user_msgs = sum(1 for m in messages if m['role'] == 'user')
             assistant_msgs = sum(1 for m in messages if m['role'] == 'assistant') 
             system_msgs = sum(1 for m in messages if m['role'] == 'system')
-            await self.send_message_to_client(MessageType.DEBUG, {"message": f"📋 Final breakdown: {user_msgs} user, {assistant_msgs} assistant, {system_msgs} system = {user_msgs + assistant_msgs + system_msgs} total"})
+            tool_msgs = sum(1 for m in messages if m['role'] == 'tool')
+            await self.send_message_to_client(MessageType.DEBUG, {"message": f"📋 Final breakdown: {user_msgs} user, {assistant_msgs} assistant, {system_msgs} system, {tool_msgs} tool = {user_msgs + assistant_msgs + system_msgs + tool_msgs} total"})
 
             # Prepare tool definitions
             tool_definitions = None
-            if enable_tools_val and tools:
-                tool_definitions = self._prepare_tool_definitions(tools)
-                await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Prepared {len(tool_definitions)} tool definitions"})
+            if enable_tools_val:
+                if tools:
+                    # Fresh tool definitions from dependency pull
+                    tool_definitions = self._prepare_tool_definitions(tools)
+                    # Save to memory for future runs
+                    self.memory['tool_definitions'] = tool_definitions
+                    await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Prepared {len(tool_definitions)} fresh tool definitions"})
+                elif self.memory['tool_definitions']:
+                    # Use saved tool definitions from previous run
+                    tool_definitions = self.memory['tool_definitions']
+                    await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Using {len(tool_definitions)} saved tool definitions from memory"})
 
             # Set API key for provider
             self._set_api_key(provider_val, api_key_val)
@@ -183,6 +244,12 @@ class LLMNode(BaseNode):
 
             # Make LLM call
             await self.send_message_to_client(MessageType.LOG, {"message": f"🚀 Calling {full_model}..."})
+            
+            # DEBUG: Dump the actual messages array
+            await self.send_message_to_client(MessageType.DEBUG, {"message": f"📨 MESSAGES ARRAY DUMP ({len(messages)} messages):"})
+            for i, msg in enumerate(messages):
+                await self.send_message_to_client(MessageType.DEBUG, {"message": f"  MSG[{i}]: {json.dumps(msg, indent=2)}"})
+            await self.send_message_to_client(MessageType.DEBUG, {"message": "📨 END MESSAGES DUMP"})
             
             response = await litellm.acompletion(
                 model=full_model,
@@ -198,6 +265,95 @@ class LLMNode(BaseNode):
             tool_calls = response.choices[0].message.tool_calls or []
 
             await self.send_message_to_client(MessageType.LOG, {"message": f"✅ LLM response received ({len(response_content)} chars, {len(tool_calls)} tool calls)"})
+            
+            # Log tool calls if any
+            if tool_calls:
+                tool_names = [tc.function.name if hasattr(tc, 'function') and hasattr(tc.function, 'name') else 'unknown' for tc in tool_calls]
+                await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Tool calls requested: {', '.join(tool_names)}"})
+
+            # Process tool calls
+            tool_call_outputs = []
+            if tool_calls and enable_tools_val:
+                try:
+                    tool_call_outputs = await self._process_tool_calls(tool_calls)
+                    await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Processed {len(tool_calls)} tool calls"})
+                except Exception as e:
+                    await self.send_message_to_client(MessageType.ERROR, {"message": f"🔧 Error in _process_tool_calls: {e}"})
+                    tool_call_outputs = []
+                
+                # Log tool execution results
+                executed_tools = sum(1 for output in tool_call_outputs if output is not None)
+                await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Executed {executed_tools} tools successfully"})
+                
+                # Store the assistant message with tool calls for the next execution
+                try:
+                    tool_calls_data = []
+                    for i, tc in enumerate(tool_calls):
+                        try:
+                            tool_call_data = {
+                                "id": tc.id,
+                                "type": "function", 
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments
+                                }
+                            }
+                            tool_calls_data.append(tool_call_data)
+                        except Exception as e:
+                            await self.send_message_to_client(MessageType.ERROR, {"message": f"🔧 Error creating tool call data {i}: {e}"})
+                            tool_calls_data.append({
+                                "id": f"error_call_{i}",
+                                "type": "function",
+                                "function": {"name": "error", "arguments": "{}"}
+                            })
+                    
+                    assistant_message = {
+                        "role": "assistant", 
+                        "content": response_content,
+                        "tool_calls": tool_calls_data
+                    }
+                except Exception as e:
+                    await self.send_message_to_client(MessageType.ERROR, {"message": f"🔧 Error creating assistant message: {e}"})
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": response_content,
+                        "tool_calls": []
+                    }
+                self.memory['pending_tool_calls'] = assistant_message
+                await self.send_message_to_client(MessageType.LOG, {"message": f"💾 Stored assistant message with {len(tool_calls)} tool calls for next execution"})
+                
+                # When making tool calls, skip the response output to prevent empty responses
+                await self.send_message_to_client(MessageType.LOG, {"message": "🚫 Skipping response output due to tool calls"})
+                
+                # Update waiting behavior: wait for only the tools that were called
+                wait_for_inputs = []
+                
+                # Determine which tool array indices were called
+                tool_definitions = self.memory.get('tool_definitions', [])
+                tool_name_to_index = {tool['function']['name']: i for i, tool in enumerate(tool_definitions)}
+                
+                called_tool_indices = set()
+                for tool_call in tool_calls:
+                    tool_name = tool_call.function.name
+                    if tool_name in tool_name_to_index:
+                        called_tool_indices.add(tool_name_to_index[tool_name])
+                
+                # Wait for the specific tool array slots that were called
+                for index in called_tool_indices:
+                    wait_for_inputs.append(f'tools_{index}')
+                
+                state_update = NodeStateUpdate(wait_for_inputs=wait_for_inputs)
+                await self.send_message_to_client(MessageType.LOG, {"message": f"🔄 Updated node to wait for called tools: {wait_for_inputs}"})
+                
+                # Filter out None values to prevent unnecessary tool executions
+                filtered_tool_outputs = []
+                for output in tool_call_outputs:
+                    if output is not None:
+                        filtered_tool_outputs.append(output)
+                    else:
+                        filtered_tool_outputs.append(SKIP_OUTPUT)
+                
+                return ((SKIP_OUTPUT, filtered_tool_outputs), state_update)
 
             # Store conversation in memory
             if use_memory_val:
@@ -205,12 +361,9 @@ class LLMNode(BaseNode):
                     self.memory['conversation_history'].append({"role": "user", "content": prompt})
                 self.memory['conversation_history'].append({"role": "assistant", "content": response_content})
                 await self.send_message_to_client(MessageType.LOG, {"message": f"💾 Stored conversation in memory (total: {len(self.memory['conversation_history'])} messages)"})
-
-            # Process tool calls
-            tool_call_outputs = []
-            if tool_calls and enable_tools_val:
-                tool_call_outputs = self._process_tool_calls(tool_calls)
-                await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Processed {len(tool_call_outputs)} tool calls"})
+            
+            # Clear pending tool calls since we're not making any
+            self.memory['pending_tool_calls'] = None
             
             # Add Chat: prefix for self-filtering when display context is enabled with user_and_self filter
             final_response = response_content
@@ -253,36 +406,26 @@ class LLMNode(BaseNode):
             
             # Skip only the most recent duplicate to preserve conversation history
             if i == most_recent_duplicate_index:
-                await self.send_message_to_client(MessageType.DEBUG, {"message": f"  ENTRY[{i}]: SKIPPED - most recent duplicate of current prompt '{content}'"})
                 continue
             
-            # Detailed logging for each entry
-            await self.send_message_to_client(MessageType.DEBUG, {"message": f"  ENTRY[{i}]: node_id={node_id}, node_title='{node_title}', content_preview='{content[:50]}{'...' if len(content) > 50 else ''}'"})
             
             # Apply filtering
             if filter_mode == "user_and_self":
                 # Include user inputs and LLM chat responses (with Chat: prefix)
                 if node_title == "User" or 'DisplayInputEventNode' in node_title:
                     messages.append({"role": "user", "content": content})
-                    await self.send_message_to_client(MessageType.DEBUG, {"message": f"    ✅ Added as USER: {content[:30]}..."})
                 elif content.startswith("Chat: "):
                     # Remove the "Chat: " prefix and add as assistant message
                     chat_content = content[6:]  # Remove "Chat: "
                     messages.append({"role": "assistant", "content": chat_content})
-                    await self.send_message_to_client(MessageType.DEBUG, {"message": f"    ✅ Added as ASSISTANT (Chat:): {chat_content[:30]}..."})
                 elif node_id == self_node_id:
                     messages.append({"role": "assistant", "content": content})
-                    await self.send_message_to_client(MessageType.DEBUG, {"message": f"    ✅ Added as ASSISTANT (self): {content[:30]}..."})
-                else:
-                    await self.send_message_to_client(MessageType.DEBUG, {"message": f"    ❌ SKIPPED (user_and_self): node_id={node_id} != {self_node_id}, title='{node_title}', no Chat: prefix"})
             elif filter_mode == "all":
                 # Include all context, map node types to roles
                 if node_title == "User" or 'DisplayInputEventNode' in node_title:
                     messages.append({"role": "user", "content": content})
-                    await self.send_message_to_client(MessageType.DEBUG, {"message": f"    ✅ Added as USER (all): {content[:30]}..."})
                 else:
                     messages.append({"role": "assistant", "content": f"[{node_title}]: {content}"})
-                    await self.send_message_to_client(MessageType.DEBUG, {"message": f"    ✅ Added as ASSISTANT (all): [{node_title}]: {content[:30]}..."})
         
         await self.send_message_to_client(MessageType.DEBUG, {"message": f"🔍 FILTERING RESULT: {len(messages)} messages after filtering"})
         return messages
@@ -338,22 +481,59 @@ class LLMNode(BaseNode):
         
         return tool_definitions
 
-    def _process_tool_calls(self, tool_calls: List[Any]) -> List[Dict[str, Any]]:
-        """Process tool calls from LLM response into MCP-compatible format."""
-        processed_calls = []
+    async def _process_tool_calls(self, tool_calls: List[Any]) -> List[Dict[str, Any]]:
+        """Process tool calls from LLM response into MCP-compatible format and route to correct tools."""
+        # Get the tool definitions to map names to array indices
+        tool_definitions = self.memory.get('tool_definitions', [])
+        tool_name_to_index = {tool['function']['name']: i for i, tool in enumerate(tool_definitions)}
+        
+        # Create array to hold tool calls for each tool (matching array size)
+        processed_calls = [None] * len(tool_definitions) if tool_definitions else []
         
         for tool_call in tool_calls:
             try:
+                
+                # Extract data with explicit error handling
+                try:
+                    call_id = tool_call.id
+                except Exception as e:
+                    await self.send_message_to_client(MessageType.ERROR, {"message": f"🔧 Error accessing tool_call.id: {e}"})
+                    call_id = f"unknown_id_{i}"
+                
+                try:
+                    call_name = tool_call.function.name
+                except Exception as e:
+                    await self.send_message_to_client(MessageType.ERROR, {"message": f"🔧 Error accessing tool_call.function.name: {e}"})
+                    call_name = "unknown_name"
+                
+                try:
+                    call_args = json.loads(tool_call.function.arguments)
+                except Exception as e:
+                    await self.send_message_to_client(MessageType.ERROR, {"message": f"🔧 Error accessing tool_call.function.arguments: {e}"})
+                    call_args = {}
+                
                 call_data = {
-                    "id": tool_call.id,
-                    "name": tool_call.function.name,
-                    "arguments": json.loads(tool_call.function.arguments)
+                    "id": call_id,
+                    "name": call_name,
+                    "arguments": call_args
                 }
-                processed_calls.append(call_data)
+                
+                # Route to correct array index based on tool name
+                tool_name = call_data["name"]
+                if tool_name in tool_name_to_index:
+                    index = tool_name_to_index[tool_name]
+                    processed_calls[index] = call_data
+                else:
+                    # If tool name not found, put it in first available slot
+                    if processed_calls:
+                        processed_calls[0] = call_data
+                        await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Warning: Tool '{tool_name}' not found in mapping, using fallback"})
+                        
             except Exception as e:
-                processed_calls.append({
-                    "error": f"Failed to process tool call: {str(e)}"
-                })
+                error_call = {"error": f"Failed to process tool call: {str(e)}"}
+                await self.send_message_to_client(MessageType.ERROR, {"message": f"🔧 Tool call processing error: {str(e)}"})
+                if processed_calls:
+                    processed_calls[0] = error_call
         
         return processed_calls
 

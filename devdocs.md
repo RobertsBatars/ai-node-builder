@@ -209,11 +209,18 @@ The application now includes comprehensive AI integration with experimental tool
 * **Context Management**: Intelligent integration with display panel context and runtime memory, with smart deduplication to prevent conversation loops.
 * **Provider Flexibility**: Users can specify any provider/model combination supported by LiteLLM.
 
-### **5.2. Tool Interface (Implemented, Untested)**
-* **MCP-Compatible Design**: Tool system designed following **Model Context Protocol (MCP)** standards for future compatibility.
-* **Dynamic Tool Arrays**: Tools use dynamic socket arrays with one input/output pair per tool connection.
-* **JSON Schema Communication**: Tools communicate using structured JSON with `input_schema` definitions.
-* **⚠️ Status**: Tool calling functionality is implemented but has not been thoroughly tested with actual tool nodes.
+### **5.2. Tool Calling System (Fully Implemented and Tested)**
+* **MCP-Inspired Design**: Tool system designed with **Model Context Protocol (MCP)**-inspired patterns for future compatibility.
+* **Dynamic Tool Arrays**: LLM node uses dynamic `tools` array socket with automatic routing based on tool names.
+* **Dual Operation Modes**: Tool nodes operate in two modes:
+  1. **Definition Mode**: When called with `tool_call=None`, returns tool schema definition
+  2. **Execution Mode**: When called with actual tool call data, processes and returns results
+* **Smart Routing**: Tool calls are automatically routed to correct array indices based on tool names, preventing cross-contamination.
+* **Proper Message Sequencing**: Implements OpenAI-compatible message sequences (assistant with tool_calls → tool results).
+* **Dynamic Waiting**: LLM node uses `NodeStateUpdate` to wait only for tools that were actually called, optimizing execution flow.
+* **SKIP_OUTPUT Integration**: Uncalled tools receive `SKIP_OUTPUT` to prevent unnecessary downstream execution.
+* **Runtime Memory Caching**: Tool definitions are cached in LLM node memory to avoid redundant dependency pulls in subsequent runs.
+* **✅ Status**: Tool calling functionality is fully implemented, tested, and working with multiple tool types.
 
 ### **5.3. New Utility Nodes**
 * **TriggerDetectionNode**: Utility node that outputs which socket triggered its execution (dependency vs do_not_wait).

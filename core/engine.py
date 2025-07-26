@@ -157,9 +157,10 @@ class NodeEngine:
 
         # 2. --- Context Setup ---
         run_context = {
+            "run_id": run_id,
             "nodes": nodes_map, "websocket": websocket,
             "node_states": defaultdict(lambda: "PENDING"),
-            "input_cache": defaultdict(dict), "waiting_on": defaultdict(list),
+            "input_cache": defaultdict(dict), "input_cache_run_ids": defaultdict(dict), "waiting_on": defaultdict(list),
             "outputs_cache": {}, "active_tasks": set(),
             "source_map": {}, "target_map": defaultdict(list),
             "node_memory": node_memory,
@@ -194,8 +195,10 @@ class NodeEngine:
                     # Use the (potentially dynamic) wait config for the reset
                     wait_config = run_context["node_wait_configs"][node_id]
                     
-                    # Only wait for inputs that aren't already cached (especially dependencies)
+                    # Only wait for inputs that aren't already cached from the same run
                     cache = run_context["input_cache"][node_id]
+                    cache_run_ids = run_context["input_cache_run_ids"][node_id]
+                    current_run_id = run_context["run_id"]
                     input_sockets = run_context["nodes"][node_id].INPUT_SOCKETS
                     waiting_for = []
                     
@@ -203,8 +206,8 @@ class NodeEngine:
                         socket_def = input_sockets.get(input_name, {})
                         is_dependency = socket_def.get("is_dependency", False)
                         
-                        # If it's a dependency and already cached, don't wait for it
-                        if is_dependency and input_name in cache:
+                        # If it's a dependency and cached from the same run, don't wait for it
+                        if is_dependency and input_name in cache and cache_run_ids.get(input_name) == current_run_id:
                             continue
                         else:
                             waiting_for.append(input_name)
@@ -212,18 +215,20 @@ class NodeEngine:
                     run_context["waiting_on"][node_id] = waiting_for
 
                     # Clear only non-dependency inputs that the node is now waiting for.
-                    # Dependency inputs should remain cached to avoid re-fetching.
+                    # Also clear dependencies from different runs.
                     keys_to_delete = []
                     for key in cache:
                         if key in wait_config:
-                            # Only clear non-dependency inputs
                             socket_def = input_sockets.get(key, {})
                             is_dependency = socket_def.get("is_dependency", False)
-                            if not is_dependency:
+                            # Clear non-dependencies or dependencies from different runs
+                            if not is_dependency or cache_run_ids.get(key) != current_run_id:
                                 keys_to_delete.append(key)
                     
                     for key in keys_to_delete:
                         del cache[key]
+                        if key in cache_run_ids:
+                            del cache_run_ids[key]
                     
                     print(f"LOG: Cleared waiting inputs for {node_id} ({node_name}). Waiting for: {run_context['waiting_on'][node_id]}")
 
@@ -301,6 +306,7 @@ class NodeEngine:
                     target_input_name = push_data['target_input_name']
                     value = push_data['value']
                     run_context["input_cache"][node_id][target_input_name] = value
+                    run_context["input_cache_run_ids"][node_id][target_input_name] = run_context["run_id"]
                     if target_input_name in run_context["waiting_on"][node_id]:
                         run_context["waiting_on"][node_id].remove(target_input_name)
                 print(f"LOG: Node {node_id} ({node_name}) waiting for: {run_context['waiting_on'][node_id]}")
