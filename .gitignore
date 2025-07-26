@@ -10,6 +10,10 @@ __pycache__/
 CLAUDE.md 
 GEMINI.md
 QWEN.md
+2025*
+
+# Temporary files
+TMP.txt
 
 # Distribution / packaging
 .Python
