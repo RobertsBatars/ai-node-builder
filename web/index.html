@@ -393,12 +393,18 @@
                 logContent.innerHTML = '';
             });
 
-            const renderDisplayMessage = (msg) => {
-                // Ensure display messages container exists and is visible
-                if (!displayMessages || !displayPanelVisible) {
-                    console.warn("Display messages container not ready or panel not visible, queuing message:", msg);
-                    // Queue the message to be rendered when panel becomes visible
-                    setTimeout(() => renderDisplayMessage(msg), 100);
+            const renderDisplayMessage = (msg, forceRender = false) => {
+                // Ensure display messages container exists
+                if (!displayMessages) {
+                    console.warn("Display messages container not ready, queuing message:", msg);
+                    setTimeout(() => renderDisplayMessage(msg, forceRender), 100);
+                    return;
+                }
+                
+                // If panel is not visible and not forcing, wait for it to become visible
+                if (!displayPanelVisible && !forceRender) {
+                    console.warn("Display panel not visible, queuing message:", msg);
+                    setTimeout(() => renderDisplayMessage(msg, forceRender), 100);
                     return;
                 }
                 
@@ -412,7 +418,7 @@
                 const header = `<div class="display-message-header">${headerText}${archivedTag}</div>`;
                 let content = '';
                 switch(msg.content_type) {
-                    case 'image': content = `<img src="${msg.data}" alt="Image from node ${msg.node_id}">`; break;
+                    case 'image': content = `<img src="${msg.data}" alt="Image from node ${msg.data}">`; break;
                     case 'video': content = `<video src="${msg.data}" controls>Your browser does not support the video tag.</video>`; break;
                     case 'warning': content = `<p style="color:#ff9800;">${msg.data}</p>`; break;
                     case 'text': default: content = `<p>${msg.data}</p>`;
@@ -424,7 +430,7 @@
             
             const redrawAllDisplayMessages = () => {
                 displayMessages.innerHTML = '';
-                localDisplayContext.forEach(renderDisplayMessage);
+                localDisplayContext.forEach(msg => renderDisplayMessage(msg, true)); // Force render all messages
                 displayMessages.scrollTop = displayMessages.scrollHeight;
             };
 
@@ -521,17 +527,16 @@
                         if (data.source === 'node') {
                             const nodeInfo = { id: data.payload.node_id, name: data.payload.node_type };
                             if (data.type === 'display') {
-                                // Show panel first if hidden, then render message after a small delay
+                                const newMsg = { node_id: data.payload.node_id, node_title: data.payload.node_type, ...data.payload.data };
+                                
+                                // Show panel first if hidden, add message to context, then redraw all
                                 if (!displayPanelVisible) {
+                                    console.log("Display panel hidden, opening panel");
+                                    localDisplayContext.push(newMsg);
                                     toggleDisplayPanel(true);
-                                    // Small delay to ensure panel is fully shown before rendering
-                                    setTimeout(() => {
-                                        const newMsg = { node_id: data.payload.node_id, node_title: data.payload.node_type, ...data.payload.data };
-                                        localDisplayContext.push(newMsg);
-                                        renderDisplayMessage(newMsg);
-                                    }, 50);
+                                    // The toggleDisplayPanel will trigger redrawAllDisplayMessages which renders everything
                                 } else {
-                                    const newMsg = { node_id: data.payload.node_id, node_title: data.payload.node_type, ...data.payload.data };
+                                    console.log("Display panel already visible, adding and rendering message");
                                     localDisplayContext.push(newMsg);
                                     renderDisplayMessage(newMsg);
                                 }

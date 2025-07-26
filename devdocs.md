@@ -40,6 +40,8 @@ To solve this, the engine was fundamentally rewritten to use a **state-machine m
 
 *   **Why a State Machine?** A state machine provides a clear and robust framework for managing the lifecycle of each node during a workflow run. It eliminates ambiguity and race conditions by ensuring that nodes transition through well-defined states (`PENDING`, `WAITING`, `EXECUTING`, `DONE`). This was a more resilient alternative to complex locking mechanisms or trying to manage a tangle of interdependent `asyncio` tasks without a central state tracker.
 
+*   **Smart Dependency Caching**: The engine now implements intelligent caching for re-triggered nodes. When a node with `do_not_wait` inputs gets re-triggered, dependency inputs remain cached to avoid unnecessary re-computation, while push inputs are cleared as expected. This optimization significantly improves performance in looping and event-driven workflows.
+
 *   **The `run_context` Object**: A central `run_context` dictionary is now created for each workflow. It acts as the "single source of truth," tracking:
     *   The state of every node.
     *   A cache for input data as it arrives.
@@ -197,12 +199,25 @@ The system for defining a node's UI was successful. It avoids the need for separ
 * **Automatic Generation**: On startup, the backend engine inspects each node class, finds these InputWidget declarations, and automatically builds a JSON "UI Blueprint" to send to the frontend.  
 * **Interactive Widgets**: The design supports widgets that can trigger backend functions via a callback property, enabling dynamic UI elements.
 
-## **5. Tool and LLM Integration (Future Implementation)**
+## **5. AI and Tool Integration (Current Implementation)**
 
-*This section outlines planned features that will build upon the core engine once it is stable.*
+The application now includes comprehensive AI integration with experimental tool support.
 
-* **"Tool Provider" Interface**: A standard interface based on the **Model Context Protocol (MCP)** will allow for two types of tool nodes: an MCP Client Node for external servers and a Python Script Node for simple, internal tools.  
-* **Universal LLM Support**: Using a library like **LiteLLM** will allow a single LLMNode to act as a universal interface to over 100 different AI models by translating requests into the standardized OpenAI API format.
+### **5.1. LLM Integration (Implemented)**
+* **Universal LLM Support**: The `LLMNode` uses the **LiteLLM** library to provide access to 100+ AI models from various providers (OpenAI, Anthropic, Google, etc.) through a unified interface.
+* **Multimodal Capabilities**: Supports text and image inputs for vision-capable models like GPT-4V and Claude-3.5-Sonnet.
+* **Context Management**: Intelligent integration with display panel context and runtime memory, with smart deduplication to prevent conversation loops.
+* **Provider Flexibility**: Users can specify any provider/model combination supported by LiteLLM.
+
+### **5.2. Tool Interface (Implemented, Untested)**
+* **MCP-Compatible Design**: Tool system designed following **Model Context Protocol (MCP)** standards for future compatibility.
+* **Dynamic Tool Arrays**: Tools use dynamic socket arrays with one input/output pair per tool connection.
+* **JSON Schema Communication**: Tools communicate using structured JSON with `input_schema` definitions.
+* **⚠️ Status**: Tool calling functionality is implemented but has not been thoroughly tested with actual tool nodes.
+
+### **5.3. New Utility Nodes**
+* **TriggerDetectionNode**: Utility node that outputs which socket triggered its execution (dependency vs do_not_wait).
+* **Enhanced DisplayInputEventNode**: Now includes a `trigger` output socket for workflow control.
 
 ## **6. Testing Framework**
 

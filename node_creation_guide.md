@@ -702,7 +702,39 @@ The `DisplayInputEventNode` is a special event node that enables chat-like inter
 
 ---
 
-## 11. Best Practices and Considerations
+## 11. Recent Node Examples
+
+### TriggerDetectionNode
+A utility node that demonstrates advanced socket configuration:
+```python
+class TriggerDetectionNode(BaseNode):
+    CATEGORY = "Utility"
+    INPUT_SOCKETS = {
+        "dependency_input": {"type": SocketType.ANY, "is_dependency": True},
+        "trigger_input": {"type": SocketType.ANY, "do_not_wait": True}
+    }
+    OUTPUT_SOCKETS = {"trigger_source": {"type": SocketType.TEXT}}
+    
+    def execute(self, dependency_input=None, trigger_input=None):
+        if trigger_input is not None:
+            return (trigger_input,)  # Returns the actual trigger input data
+        else:
+            return (dependency_input,)  # Returns the actual dependency input data
+```
+
+This node shows how to:
+- Use both dependency and do_not_wait socket configurations
+- Pass through input data based on which socket triggered execution
+- Create utility nodes for workflow control
+
+### LLMNode (AI Integration)
+The `LLMNode` demonstrates advanced features like:
+- Universal AI model access via litellm
+- Context integration from display panel and runtime memory
+- Multimodal support (text + images)
+- Tool calling system (⚠️ **Not fully tested**)
+
+## 12. Best Practices and Considerations
 
 - **Keep Nodes Atomic**: Each node should perform a single, clear task. Instead of one giant node that does three things, create three smaller nodes. This makes your workflows more flexible and easier to debug.
 - **Initialize Memory**: When using stateful nodes, it is best practice to initialize all expected keys for `self.memory` in the `load()` method. This prevents potential `KeyError` exceptions and makes the node's expected state clear.
@@ -710,6 +742,7 @@ The `DisplayInputEventNode` is a special event node that enables chat-like inter
 - **Return a Tuple**: The `execute` method **must** return a tuple for its outputs, even if there is only one. For a single output, return `(my_value,)`. For no outputs, return `()`. To conditionally prevent an output from firing, return the `SKIP_OUTPUT` object in its place in the tuple.
 - **Clear Naming**: Use descriptive names for your node class, sockets, and widgets. This makes the system easier to use for everyone.
 - **Check the Frontend**: Remember that the `widget_type` you specify in the backend must have a corresponding implementation in `web/index.html` to render correctly.
+- **Test Tool Integration**: If implementing tool-calling nodes, be aware that the tool system has been implemented but not thoroughly tested.
 
 
 By following this guide, you can extend the AI Node Builder with powerful, custom functionality. Happy building!

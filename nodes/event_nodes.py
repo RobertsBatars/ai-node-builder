@@ -93,7 +93,8 @@ class DisplayInputEventNode(EventNode):
     INPUT_SOCKETS = {}
     OUTPUT_SOCKETS = {
         "user_input": {"type": SocketType.TEXT},
-        "display_context": {"type": SocketType.ANY}
+        "display_context": {"type": SocketType.ANY},
+        "trigger": {"type": SocketType.ANY}
     }
 
     def load(self):
@@ -121,7 +122,9 @@ class DisplayInputEventNode(EventNode):
         payload = self.memory.get('initial_payload', "")
         # Get current display context from global state
         display_context = self.global_state.get('display_context', [])
-        return (payload, display_context)
+        # Empty trigger output for workflow control
+        trigger_output = ""
+        return (payload, display_context, trigger_output)
 
 
 class WebhookRequestHandler(BaseHTTPRequestHandler):

@@ -193,11 +193,35 @@ class NodeEngine:
                     
                     # Use the (potentially dynamic) wait config for the reset
                     wait_config = run_context["node_wait_configs"][node_id]
-                    run_context["waiting_on"][node_id] = list(wait_config)
-
-                    # Clear only the inputs that the node is now waiting for.
+                    
+                    # Only wait for inputs that aren't already cached (especially dependencies)
                     cache = run_context["input_cache"][node_id]
-                    keys_to_delete = [key for key in cache if key in wait_config]
+                    input_sockets = run_context["nodes"][node_id].INPUT_SOCKETS
+                    waiting_for = []
+                    
+                    for input_name in wait_config:
+                        socket_def = input_sockets.get(input_name, {})
+                        is_dependency = socket_def.get("is_dependency", False)
+                        
+                        # If it's a dependency and already cached, don't wait for it
+                        if is_dependency and input_name in cache:
+                            continue
+                        else:
+                            waiting_for.append(input_name)
+                    
+                    run_context["waiting_on"][node_id] = waiting_for
+
+                    # Clear only non-dependency inputs that the node is now waiting for.
+                    # Dependency inputs should remain cached to avoid re-fetching.
+                    keys_to_delete = []
+                    for key in cache:
+                        if key in wait_config:
+                            # Only clear non-dependency inputs
+                            socket_def = input_sockets.get(key, {})
+                            is_dependency = socket_def.get("is_dependency", False)
+                            if not is_dependency:
+                                keys_to_delete.append(key)
+                    
                     for key in keys_to_delete:
                         del cache[key]
                     

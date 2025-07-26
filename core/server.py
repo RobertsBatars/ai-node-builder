@@ -4,6 +4,7 @@
 import json
 import asyncio
 import uuid
+from datetime import datetime
 from collections import defaultdict
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
@@ -170,6 +171,22 @@ async def websocket_endpoint(websocket: WebSocket):
                 user_input = data.get("input", "")
                 if not user_input.strip():
                     continue
+                
+                # Add user message to global display context
+                user_message_entry = {
+                    "node_id": None,  # No specific node ID for user messages
+                    "node_title": "User",
+                    "content_type": "text",
+                    "data": user_input,
+                    "timestamp": datetime.now().isoformat()
+                }
+                GLOBAL_DISPLAY_STATE['display_context'].append(user_message_entry)
+                
+                # Sync updated context back to frontend
+                await broadcast_to_frontend({
+                    "type": "display_context_state",
+                    "payload": GLOBAL_DISPLAY_STATE
+                })
                 
                 # Find DisplayInputEventNode in the current event listeners
                 manager = event_managers.get(websocket)
