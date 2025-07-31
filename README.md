@@ -2,6 +2,10 @@
 
 A modular, node-based graphical application for creating and running AI and data processing workflows.
 
+
+<img width="2559" height="1465" alt="image" src="https://github.com/user-attachments/assets/c3dbb3d6-fc46-4fde-bec8-e86606dda470" />
+Simple LLM workflow
+
 ## How to Run
 
 1.  **Install Dependencies:**
