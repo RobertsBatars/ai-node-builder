@@ -425,7 +425,7 @@ class LLMNode(BaseNode):
                 if node_title == "User" or 'DisplayInputEventNode' in node_title:
                     messages.append({"role": "user", "content": content})
                 else:
-                    messages.append({"role": "assistant", "content": f"[{node_title}]: {content}"})
+                    messages.append({"role": "assistant", "content": content})
         
         await self.send_message_to_client(MessageType.DEBUG, {"message": f"🔍 FILTERING RESULT: {len(messages)} messages after filtering"})
         return messages
