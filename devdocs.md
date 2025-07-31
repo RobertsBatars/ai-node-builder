@@ -61,6 +61,7 @@ To solve this, the engine was fundamentally rewritten to use a **state-machine m
 
 *   **Key Benefits of the New Model**:
     *   **No Deadlocks**: A node is only executed once all its required inputs are explicitly resolved and cached. The "pull" and "push" actions are now decoupled, preventing circular waits.
+    *   **Non-blocking Concurrent Execution**: When data is pushed to a node that is already in the `EXECUTING` state, the engine immediately returns without caching the data. This prevents blocking and maintains parallel execution, though the pushed data is discarded.
     *   **Stateful Execution**: The `node_memory` cache allows nodes to be stateful within a single workflow, remembering information from previous executions.
     *   **Dynamic Looping**: By allowing nodes to dynamically change which inputs they wait for, the engine can now support complex, stateful loops.
     *   **Correct Dependency Handling**: The engine now correctly respects the `is_dependency` flag, only pulling data when necessary and avoiding redundant pulls if the data is already being pushed.
