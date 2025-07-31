@@ -123,7 +123,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text(json.dumps({"type": "error", "message": "No start node selected."}))
                     continue
 
-                task = asyncio.create_task(engine.run_workflow(graph_data, str(start_node_id), websocket, run_id, GLOBAL_DISPLAY_STATE))
+                event_manager = event_managers[websocket]
+                task = asyncio.create_task(engine.run_workflow(graph_data, str(start_node_id), websocket, run_id, GLOBAL_DISPLAY_STATE, event_manager=event_manager))
                 active_workflows[run_id] = task
                 client_tasks[websocket].add(run_id)
                 task.add_done_callback(lambda t: on_task_done(run_id, websocket))
@@ -145,8 +146,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
                 
                 # Instantiate all nodes to find the event nodes
+                manager = event_managers[websocket]
                 all_nodes = [
-                    engine.node_classes[n['type'].split('/')[-1]](engine, n, {}, None, GLOBAL_DISPLAY_STATE)
+                    engine.node_classes[n['type'].split('/')[-1]](engine, n, {}, None, GLOBAL_DISPLAY_STATE, manager)
                     for n in graph_data['nodes'] if n['type'].split('/')[-1] in engine.node_classes
                 ]
                 event_nodes = [node for node in all_nodes if isinstance(node, EventNode)]
@@ -155,7 +157,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text(json.dumps({"type": "engine_log", "run_id": "events", "message": "No event nodes found in the graph."}))
                     continue
 
-                manager = event_managers[websocket]
                 # The manager's start_listeners now needs to handle the task creation and tracking
                 await manager.start_listeners(event_nodes, graph_data, active_workflows, client_tasks[websocket])
                 await websocket.send_text(json.dumps({"type": "engine_log", "run_id": "events", "message": "Now listening for events."}))

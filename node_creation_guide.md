@@ -974,7 +974,63 @@ To use your tool nodes with the LLM node:
 
 The LLM node handles all the complex routing, message sequencing, and OpenAI API compatibility automatically. This system has been thoroughly tested with multiple tool types and complex tool calling scenarios.
 
-## 13. Best Practices and Considerations
+## 13. Event Communication Nodes
+
+The system includes specialized nodes for inter-workflow communication, enabling parallel workflow coordination and data exchange:
+
+### Event Communication Pattern
+
+The event system follows a Send/Receive/Await/Return pattern:
+
+```python
+# Example: ReceiveEventNode that starts parallel workflows
+class ReceiveEventNode(EventNode):
+    """Listens for internal events and starts parallel workflows."""
+    CATEGORY = "Events"
+    
+    OUTPUT_SOCKETS = {
+        "data": {"type": SocketType.ANY},
+        "event_id": {"type": SocketType.TEXT},
+        "await_id": {"type": SocketType.TEXT}  # For response correlation
+    }
+    
+    listen_id = InputWidget(widget_type="TEXT", default="event_1")
+    
+    async def start_listening(self, trigger_workflow_callback):
+        # Register with EventManager for internal event listening
+        if self.event_manager:
+            await self.event_manager.register_internal_listener(self.listening_id, trigger_workflow_callback)
+    
+    def execute(self, *args, **kwargs):
+        payload = self.memory.get('initial_payload', "")
+        event_id = self.widget_values.get('listen_id', self.listen_id.default)
+        
+        # Handle await functionality
+        if isinstance(payload, dict) and 'await_id' in payload:
+            return (payload['data'], event_id, payload['await_id'])
+        else:
+            return (payload, event_id, SKIP_OUTPUT)
+```
+
+### Key Event Node Features
+
+1. **ReceiveEventNode** (EventNode): Inherits from EventNode, registers with EventManager, outputs event data and correlation IDs
+
+2. **SendEventNode/AwaitEventNode**: Use `self.event_manager` to send events, support both single and array event IDs
+
+3. **Event Manager Integration**: Nodes access EventManager via `self.event_manager` (passed during initialization)
+
+4. **Timeout and Response Handling**: AwaitEventNode includes timeout logic and partial response collection
+
+### Best Practices for Event Nodes
+
+- Use unique event IDs to avoid conflicts between different workflows
+- Always handle the case where `self.event_manager` might be None
+- Use SKIP_OUTPUT for conditional outputs (e.g., await_id when not present)
+- Include proper error handling and timeout logic for await operations
+- Follow the established pattern: Send → Receive → Process → Return
+
+## 14. Best Practices and Considerations
 
 - **Keep Nodes Atomic**: Each node should perform a single, clear task. Instead of one giant node that does three things, create three smaller nodes. This makes your workflows more flexible and easier to debug.
 - **Initialize Memory**: When using stateful nodes, it is best practice to initialize all expected keys for `self.memory` in the `load()` method. This prevents potential `KeyError` exceptions and makes the node's expected state clear.

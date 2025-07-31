@@ -68,12 +68,13 @@ class BaseNode(ABC):
     INPUT_SOCKETS = {}
     OUTPUT_SOCKETS = {}
 
-    def __init__(self, engine, node_info, memory, run_id, global_state):
+    def __init__(self, engine, node_info, memory, run_id, global_state, event_manager=None):
         self.engine = engine
         self.node_info = node_info
         self.memory = memory
         self.run_id = run_id
         self.global_state = global_state
+        self.event_manager = event_manager
         
         self.widget_values = {}
         if 'widgets_values' in self.node_info and self.node_info['widgets_values'] is not None:

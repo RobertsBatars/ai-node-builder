@@ -248,3 +248,94 @@ To ensure the stability and correctness of the node engine and the individual no
     1.  A test **fails** if the `AssertNode` raises an exception (`AssertionError`).
     2.  A test **fails** if the workflow completes but no `AssertNode` was ever executed. This prevents "false positives" where a broken workflow finishes without actually verifying the result.
     3.  A test **passes** only if the workflow completes *and* at least one `AssertNode` has successfully executed. This is verified by having the `AssertNode` send a special `TEST_EVENT` message to the client, which the test runner listens for.
+
+## **7. Inter-Workflow Event Communication System**
+
+Building on the existing event-driven architecture, an advanced inter-workflow communication system was implemented to enable data exchange and coordination between parallel workflows. This system extends the original `EventManager` with internal event routing capabilities.
+
+### **7.1. Architecture Overview**
+
+The inter-workflow communication follows a **Send/Receive/Await/Return** pattern:
+- **Send**: Trigger parallel workflows with specific event IDs
+- **Receive**: Listen for internal events and start workflows
+- **Await**: Send events and wait for responses with timeout handling  
+- **Return**: Send data back to awaiting workflows
+
+### **7.2. Core Event Communication Nodes**
+
+**`ReceiveEventNode` (EventNode)**:
+- Inherits from `EventNode` to leverage existing event infrastructure
+- Registers with `EventManager` for internal event listening using unique event IDs
+- Outputs received data, event ID, and await ID (for response correlation)
+- Uses `SKIP_OUTPUT` for conditional await ID output when not present
+
+**`SendEventNode`**: 
+- Sends events to registered `ReceiveEventNode` instances
+- Auto-detects single event ID (string) vs array of event IDs 
+- Supports array data distribution (data[i] → event_ids[i])
+- Falls back to widget-configured event ID when no input connected
+
+**`AwaitEventNode`**:
+- Extends `SendEventNode` functionality with response collection
+- Creates unique await IDs for response correlation
+- Implements timeout handling with partial response collection
+- Returns single data for 1 response, array for multiple responses
+- Provides detailed timeout diagnostics showing collected vs expected responses
+
+**`ReturnEventDataNode`**:
+- Completes the communication cycle by sending responses back
+- Takes return data and await ID for proper correlation
+- Integrates with `EventManager`'s await response system
+
+**`StringArrayCreatorNode`**:
+- Utility node for array preparation and flattening
+- Handles mixed inputs: extends arrays, appends single values
+- Enables connection between single-output nodes and array-input event nodes
+
+### **7.3. EventManager Enhancements**
+
+The existing `EventManager` was extended with internal event routing capabilities:
+
+**Internal Event Registry**:
+- `internal_listeners`: Maps event IDs to callback functions
+- `await_responses`: Collects responses for await operations  
+- `await_waiters`: Manages asyncio Events for response synchronization
+
+**Key Methods**:
+- `register_internal_listener()`: Register ReceiveEventNode callbacks
+- `send_internal_event()`: Route events to registered listeners
+- `send_internal_event_with_await()`: Enhanced payload with await correlation
+- `collect_await_responses()`: Timeout-aware response collection with partial results
+- `send_await_response()`: Return data to awaiting workflows
+
+### **7.4. Implementation Challenges and Solutions**
+
+**Event Manager Integration**:
+- **Challenge**: Nodes needed access to `EventManager` instance
+- **Solution**: Extended `BaseNode` constructor to accept `event_manager` parameter, modified engine and server to pass the instance
+
+**Response Collection Timing**:
+- **Challenge**: Responses could arrive before `collect_await_responses` started waiting
+- **Solution**: Modified collection logic to immediately check existing responses before waiting for new ones
+
+**Timeout Accuracy**:
+- **Challenge**: Timeout messages showed "0 collected" even when responses were received
+- **Solution**: Added logic to retrieve actual collected responses from EventManager during timeout handling
+
+**Single vs Array Output**:
+- **Challenge**: AwaitEventNode needed flexible output format
+- **Solution**: Return single data for 1 response, array for multiple responses; use single output socket instead of dynamic array
+
+### **7.5. Key Features**
+
+**Smart Auto-Detection**: Send/Await nodes automatically switch between widget ID and array input based on connections
+
+**Robust Timeout Handling**: Partial response collection with detailed diagnostics and frontend warnings
+
+**Response Correlation**: Await IDs ensure responses reach correct awaiting workflows even in complex parallel scenarios
+
+**Array Processing**: Proper handling of both single values and arrays throughout the communication chain
+
+**Integration with Existing Systems**: Seamless integration with existing EventManager, parallel workflow execution, and state management
+
+This system enables sophisticated workflow coordination patterns like parallel processing with result aggregation, event-driven microservice-like architectures within the node graph, and complex branching/merging workflows with data synchronization.

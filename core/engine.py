@@ -73,7 +73,7 @@ class NodeEngine:
             all_node_definitions.append(node_def)
         return json.dumps(all_node_definitions, indent=2)
 
-    async def run_workflow(self, graph_data, start_node_id, websocket, run_id, global_state, initial_payload=None):
+    async def run_workflow(self, graph_data, start_node_id, websocket, run_id, global_state, initial_payload=None, event_manager=None):
         current_hash = self._generate_graph_hash(graph_data)
         global_state["graph_hash"] = current_hash
 
@@ -136,7 +136,7 @@ class NodeEngine:
         # 1. --- Initialization ---
         node_memory = defaultdict(dict)
         nodes_map = {
-            str(n['id']): self.node_classes[n['type'].split('/')[-1]](self, n, node_memory[str(n['id'])], run_id, global_state)
+            str(n['id']): self.node_classes[n['type'].split('/')[-1]](self, n, node_memory[str(n['id'])], run_id, global_state, event_manager)
             for n in graph_data['nodes'] if n['type'].split('/')[-1] in self.node_classes
         }
 
