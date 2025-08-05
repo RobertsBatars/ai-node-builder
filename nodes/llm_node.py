@@ -67,6 +67,8 @@ class LLMNode(BaseNode):
             self.memory['tool_definitions'] = []
         if 'pending_tool_calls' not in self.memory:
             self.memory['pending_tool_calls'] = None
+        if 'current_execution_messages' not in self.memory:
+            self.memory['current_execution_messages'] = []
 
     async def execute(self, prompt=None, system_prompt=None, tools=None):
         """Execute the LLM call with context integration and tool support."""
@@ -164,49 +166,79 @@ class LLMNode(BaseNode):
                         preview = msg['content'][:100] + "..." if len(msg['content']) > 100 else msg['content']
                         await self.send_message_to_client(MessageType.DEBUG, {"message": f"  Memory msg {i}: {msg['role']} - {preview}"})
 
-            # Add current prompt (but not when we're processing tool results)
+            # Add current prompt - always include it unless we're in a tool result continuation
             current_prompt_added = 0
             if prompt and not tool_results:
                 # Check if prompt contains image data (base64)
                 user_message = self._process_multimodal_input(prompt, full_model)
                 messages.append(user_message)
                 current_prompt_added = 1
+                # Store the current prompt for this execution session
+                self.memory['current_execution_messages'] = [user_message]
                 await self.send_message_to_client(MessageType.LOG, {"message": f"📝 Added current prompt ({len(prompt)} chars)"})
+            elif tool_results and self.memory.get('current_execution_messages'):
+                # Add the original prompt from this execution session
+                original_messages = self.memory.get('current_execution_messages', [])
+                for msg in original_messages:
+                    if msg['role'] == 'user':
+                        messages.append(msg)
+                        current_prompt_added = 1
+                        await self.send_message_to_client(MessageType.LOG, {"message": f"📝 Re-added original prompt from execution session ({len(msg['content'])} chars)"})
+                        break
             elif tool_results:
-                await self.send_message_to_client(MessageType.LOG, {"message": f"🚫 Skipping current prompt - processing tool results (prompt='{prompt}')"})
+                await self.send_message_to_client(MessageType.LOG, {"message": f"🚫 No original prompt found for tool result processing (prompt='{prompt}')"})
 
             # Add tool results if we received them (AFTER display context and memory)
             tool_results_added = 0
             if tool_results:
                 await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Processing {len(tool_results)} tool results"})
-                # First add the pending assistant message with tool calls
-                pending_message = self.memory.get('pending_tool_calls')
-                if pending_message:
-                    messages.append(pending_message)
-                    await self.send_message_to_client(MessageType.LOG, {"message": "🔧 Added pending assistant message with tool calls"})
-                    tool_results_added += 1  # Count the assistant message
-                else:
-                    await self.send_message_to_client(MessageType.ERROR, {"message": "🔧 ERROR: No pending tool calls found but tool results received!"})
-                    return ("Error: Tool results received without preceding tool calls", [])
                 
-                # Then add the tool result messages (only for valid results)
+                # Get assistant messages and tool results for proper interleaving
+                execution_messages = self.memory.get('current_execution_messages', [])
+                assistant_messages = [msg for msg in execution_messages if msg['role'] == 'assistant' and msg.get('tool_calls')]
+                await self.send_message_to_client(MessageType.DEBUG, {"message": f"🔧 Found {len(assistant_messages)} assistant messages with tool calls in execution session"})
+                
+                # Fallback to old system if execution session is empty
+                if not assistant_messages:
+                    pending_message = self.memory.get('pending_tool_calls')
+                    if pending_message:
+                        assistant_messages = [pending_message]
+                        await self.send_message_to_client(MessageType.LOG, {"message": "🔧 Using fallback pending_tool_calls message"})
+                    else:
+                        await self.send_message_to_client(MessageType.ERROR, {"message": "🔧 ERROR: No assistant messages with tool calls found!"})
+                        return ("Error: Tool results received without preceding tool calls", [])
+                
+                # Create mapping of tool call IDs to tool results
+                tool_result_map = {}
                 for tool_result in tool_results:
-                    # Skip None results or results without proper ID
-                    if tool_result is None or not isinstance(tool_result, dict) or 'id' not in tool_result:
-                        continue
-                    
-                    # Add tool result as a tool message
-                    tool_message = {
-                        "role": "tool",
-                        "tool_call_id": tool_result.get('id'),
-                        "content": json.dumps(tool_result.get('result', tool_result.get('error', 'Unknown result')))
-                    }
-                    messages.append(tool_message)
-                    tool_results_added += 1
+                    if tool_result and isinstance(tool_result, dict) and 'id' in tool_result:
+                        tool_result_map[tool_result['id']] = tool_result
                 
-                # Clear the pending tool calls since we've used them
-                self.memory['pending_tool_calls'] = None
-                await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Added {tool_results_added} tool-related messages (assistant + tool results)"})
+                await self.send_message_to_client(MessageType.DEBUG, {"message": f"🔧 Created tool result map with {len(tool_result_map)} results"})
+                
+                # Interleave assistant messages with their corresponding tool results
+                for assistant_msg in assistant_messages:
+                    # Add the assistant message
+                    messages.append(assistant_msg)
+                    tool_results_added += 1
+                    await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Added assistant message with {len(assistant_msg.get('tool_calls', []))} tool calls"})
+                    
+                    # Add tool results for this assistant message immediately after
+                    tool_calls = assistant_msg.get('tool_calls', [])
+                    for tool_call in tool_calls:
+                        tool_call_id = tool_call.get('id')
+                        if tool_call_id and tool_call_id in tool_result_map:
+                            tool_result = tool_result_map[tool_call_id]
+                            tool_message = {
+                                "role": "tool",
+                                "tool_call_id": tool_call_id,
+                                "content": json.dumps(tool_result.get('result', tool_result.get('error', 'Unknown result')))
+                            }
+                            messages.append(tool_message)
+                            tool_results_added += 1
+                            await self.send_message_to_client(MessageType.DEBUG, {"message": f"🔧 Added tool result for call ID {tool_call_id}"})
+                
+                await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Added {tool_results_added} tool-related messages (assistant messages + tool results)"})
 
             # Log actual vs expected message count to detect deduplication
             expected_count = (1 if system_prompt else 0) + display_message_count + memory_message_count + tool_results_added + current_prompt_added
@@ -319,8 +351,14 @@ class LLMNode(BaseNode):
                         "content": response_content,
                         "tool_calls": []
                     }
+                # Store assistant message in current execution session
+                if 'current_execution_messages' not in self.memory:
+                    self.memory['current_execution_messages'] = []
+                self.memory['current_execution_messages'].append(assistant_message)
+                
+                # Also keep the old system for backward compatibility
                 self.memory['pending_tool_calls'] = assistant_message
-                await self.send_message_to_client(MessageType.LOG, {"message": f"💾 Stored assistant message with {len(tool_calls)} tool calls for next execution"})
+                await self.send_message_to_client(MessageType.LOG, {"message": f"💾 Stored assistant message with {len(tool_calls)} tool calls in execution session"})
                 
                 # When making tool calls, skip the response output to prevent empty responses
                 await self.send_message_to_client(MessageType.LOG, {"message": "🚫 Skipping response output due to tool calls"})
@@ -362,8 +400,10 @@ class LLMNode(BaseNode):
                 self.memory['conversation_history'].append({"role": "assistant", "content": response_content})
                 await self.send_message_to_client(MessageType.LOG, {"message": f"💾 Stored conversation in memory (total: {len(self.memory['conversation_history'])} messages)"})
             
-            # Clear pending tool calls since we're not making any
+            # Clear pending tool calls and execution session since we're not making any more tool calls
             self.memory['pending_tool_calls'] = None
+            self.memory['current_execution_messages'] = []
+            await self.send_message_to_client(MessageType.LOG, {"message": "🧹 Cleared execution session - no more tool calls"})
             
             # Add Chat: prefix for self-filtering when display context is enabled with user_and_self filter
             final_response = response_content
