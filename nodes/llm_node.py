@@ -54,6 +54,8 @@ class LLMNode(BaseNode):
     use_runtime_memory = InputWidget(widget_type="BOOLEAN", default=True)
     
     enable_tools = InputWidget(widget_type="BOOLEAN", default=True)
+    
+    output_intermediate_messages = InputWidget(widget_type="BOOLEAN", default=False)
 
     def load(self):
         """Initialize the LLM node."""
@@ -97,6 +99,7 @@ class LLMNode(BaseNode):
             display_filter_val = self.widget_values.get('display_context_filter', self.display_context_filter.default)
             use_memory_val = self.widget_values.get('use_runtime_memory', self.use_runtime_memory.default)
             enable_tools_val = self.widget_values.get('enable_tools', self.enable_tools.default)
+            output_intermediate_val = self.widget_values.get('output_intermediate_messages', self.output_intermediate_messages.default)
 
             # Validate inputs
             if not provider_val or not model_val:
@@ -360,8 +363,18 @@ class LLMNode(BaseNode):
                 self.memory['pending_tool_calls'] = assistant_message
                 await self.send_message_to_client(MessageType.LOG, {"message": f"💾 Stored assistant message with {len(tool_calls)} tool calls in execution session"})
                 
-                # When making tool calls, skip the response output to prevent empty responses
-                await self.send_message_to_client(MessageType.LOG, {"message": "🚫 Skipping response output due to tool calls"})
+                # Prepare intermediate message for potential output
+                final_intermediate = response_content
+                if use_display_val and display_filter_val == "user_and_self" and response_content.strip():
+                    final_intermediate = f"Chat: {response_content}"
+                
+                # Handle intermediate message output when making tool calls
+                if output_intermediate_val and response_content.strip():
+                    await self.send_message_to_client(MessageType.LOG, {"message": f"📤 Outputting intermediate message before tool calls ({len(response_content)} chars)"})
+                    if use_display_val and display_filter_val == "user_and_self":
+                        await self.send_message_to_client(MessageType.LOG, {"message": "🏷️ Added 'Chat:' prefix to intermediate message for self-filtering"})
+                else:
+                    await self.send_message_to_client(MessageType.LOG, {"message": "🚫 Skipping response output due to tool calls"})
                 
                 # Update waiting behavior: wait for only the tools that were called
                 wait_for_inputs = []
@@ -391,7 +404,11 @@ class LLMNode(BaseNode):
                     else:
                         filtered_tool_outputs.append(SKIP_OUTPUT)
                 
-                return ((SKIP_OUTPUT, filtered_tool_outputs), state_update)
+                # Return intermediate message if enabled, otherwise skip output
+                if output_intermediate_val and response_content.strip():
+                    return ((final_intermediate, filtered_tool_outputs), state_update)
+                else:
+                    return ((SKIP_OUTPUT, filtered_tool_outputs), state_update)
 
             # Store conversation in memory
             if use_memory_val:

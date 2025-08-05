@@ -221,7 +221,9 @@ The application now includes comprehensive AI integration with experimental tool
 * **Dynamic Waiting**: LLM node uses `NodeStateUpdate` to wait only for tools that were actually called, optimizing execution flow.
 * **SKIP_OUTPUT Integration**: Uncalled tools receive `SKIP_OUTPUT` to prevent unnecessary downstream execution.
 * **Runtime Memory Caching**: Tool definitions are cached in LLM node memory to avoid redundant dependency pulls in subsequent runs.
-* **✅ Status**: Tool calling functionality is fully implemented, tested, and working with multiple tool types.
+* **Chained Tool Call Support**: Full support for multiple sequential tool calls with proper message interleaving and conversation history preservation.
+* **Intermediate Message Output**: Optional `output_intermediate_messages` widget allows displaying LLM reasoning before tool calls.
+* **✅ Status**: Tool calling functionality is fully implemented, tested, and working with multiple tool types and chained sequences.
 
 ### **5.3. New Utility Nodes**
 * **TriggerDetectionNode**: Utility node that outputs which socket triggered its execution (dependency vs do_not_wait).
