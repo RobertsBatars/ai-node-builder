@@ -105,6 +105,19 @@ class BaseNode(ABC):
         """Helper to find an input socket's name by its position."""
         return list(self.INPUT_SOCKETS.keys())[slot_index]
 
+    def get_socket_config(self, socket_name):
+        """Get configuration for a specific input socket."""
+        return self.INPUT_SOCKETS.get(socket_name, {}).copy()
+
+    def get_input_socket_configs(self):
+        """Get all input socket configurations."""
+        return {name: config.copy() for name, config in self.INPUT_SOCKETS.items()}
+
+    def configure_socket(self, socket_name, properties):
+        """Dynamically update socket configuration during load()."""
+        if socket_name in self.INPUT_SOCKETS:
+            self.INPUT_SOCKETS[socket_name].update(properties)
+
     @abstractmethod
     def load(self):
         """Perform one-time setup."""

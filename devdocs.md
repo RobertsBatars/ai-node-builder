@@ -225,9 +225,11 @@ The application now includes comprehensive AI integration with experimental tool
 * **Intermediate Message Output**: Optional `output_intermediate_messages` widget allows displaying LLM reasoning before tool calls.
 * **✅ Status**: Tool calling functionality is fully implemented, tested, and working with multiple tool types and chained sequences.
 
-### **5.3. New Utility Nodes**
+### **5.3. New Utility Nodes and Enhanced Features**
 * **TriggerDetectionNode**: Utility node that outputs which socket triggered its execution (dependency vs do_not_wait).
 * **Enhanced DisplayInputEventNode**: Now includes a `trigger` output socket for workflow control.
+* **Dynamic Socket Configuration**: BaseNode now provides methods (`get_socket_config()`, `configure_socket()`) for runtime socket configuration modification in the `load()` method.
+* **Enhanced StringArrayCreatorNode**: Now includes widget-driven socket configuration with wait/dependency toggles and single-item passthrough functionality.
 
 ## **6. Testing Framework**
 
@@ -341,3 +343,84 @@ The existing `EventManager` was extended with internal event routing capabilitie
 **Integration with Existing Systems**: Seamless integration with existing EventManager, parallel workflow execution, and state management
 
 This system enables sophisticated workflow coordination patterns like parallel processing with result aggregation, event-driven microservice-like architectures within the node graph, and complex branching/merging workflows with data synchronization.
+
+## **8. Dynamic Socket Configuration System**
+
+To enable runtime customization of node behavior, a dynamic socket configuration system was implemented that allows nodes to modify their input socket properties during the `load()` phase based on widget values.
+
+### **8.1. Architecture Overview**
+
+The system provides three new methods on the `BaseNode` class:
+- `get_socket_config(socket_name)`: Retrieves configuration for a specific socket
+- `get_input_socket_configs()`: Retrieves all input socket configurations
+- `configure_socket(socket_name, properties)`: Updates socket configuration (initially implemented but later replaced)
+
+### **8.2. Implementation Approach**
+
+**Initial Implementation Challenge**: The first approach used `configure_socket()` to update existing socket configurations, but this caused issues because it only added new properties without removing existing ones. For example, when disabling `is_dependency`, the flag remained in the socket definition.
+
+**Solution**: Direct socket replacement. Instead of updating properties, the system now completely replaces the socket configuration dictionary:
+```python
+# Complete replacement ensures old flags are cleared
+self.INPUT_SOCKETS["socket_name"] = new_config
+```
+
+### **8.3. Enhanced StringArrayCreatorNode Implementation**
+
+The `StringArrayCreatorNode` was enhanced to demonstrate this pattern with three widget controls:
+
+**Widget Controls**:
+- `wait_toggle` (default: True): Controls whether to wait for inputs or use `do_not_wait` behavior
+- `dependency_toggle` (default: True): Controls dependency pulling behavior  
+- `single_item_passthrough` (default: True): Controls output format for single-item results
+
+**Dynamic Configuration Logic**:
+```python
+def load(self):
+    should_wait = self.widget_values.get('wait_toggle', self.wait_toggle.default)
+    use_dependency = self.widget_values.get('dependency_toggle', self.dependency_toggle.default)
+    
+    # Build completely new socket configuration
+    socket_config = {"type": SocketType.ANY, "array": True}
+    
+    if not should_wait:
+        socket_config["do_not_wait"] = True
+    
+    if use_dependency and should_wait:  # Respects priority: do_not_wait > is_dependency
+        socket_config["is_dependency"] = True
+    
+    # Complete replacement to clear any existing flags
+    self.INPUT_SOCKETS["inputs"] = socket_config
+```
+
+### **8.4. Key Design Decisions**
+
+**Priority System Respected**: The implementation maintains the existing engine priority where `do_not_wait` overrides `is_dependency`, ensuring consistent behavior with the execution engine.
+
+**Load Phase Only**: Socket configuration changes are restricted to the `load()` method to ensure they're applied before the engine processes socket definitions for workflow execution.
+
+**Backward Compatibility**: Existing workflows using the `StringArrayCreatorNode` continue to work with default widget values, maintaining the original behavior.
+
+**Complete Configuration Rebuild**: Rather than incremental updates, the system rebuilds socket configurations from scratch to avoid configuration pollution from previous states.
+
+### **8.5. Testing and Validation**
+
+A comprehensive test suite (`test_socket_config.py`) was created to verify:
+- Default configuration behavior (wait=True, dependency=True)
+- No-wait configuration (`do_not_wait` flag set correctly)
+- No-dependency configuration (no `is_dependency` flag)
+- Combined configurations (neither wait nor dependency)
+- Single-item passthrough functionality
+- Array flattening with nested structures
+
+The testing revealed and helped fix the initial implementation issue where old socket flags weren't being cleared properly.
+
+### **8.6. Benefits and Use Cases**
+
+This system enables:
+- **Runtime Behavior Adaptation**: Nodes can change their execution behavior based on user preferences
+- **Workflow Flexibility**: Same node can operate in different modes within the same workflow
+- **Loop Control**: Nodes can switch between waiting and non-waiting behaviors for different loop scenarios
+- **Conditional Dependencies**: Enable/disable dependency pulling based on workflow requirements
+
+The implementation provides a foundation for creating highly configurable nodes that adapt their socket behavior to different workflow contexts, enhancing the overall flexibility and power of the node-based system.

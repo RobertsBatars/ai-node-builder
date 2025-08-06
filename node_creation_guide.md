@@ -399,26 +399,92 @@ class WaitNode(BaseNode):
 
 ---
 
-## 8. Advanced Feature: Creating Loops with State
+## 8. Advanced Feature: Dynamic Socket Configuration and Loops
 
-To create loops, you need to combine three features:
-1.  **`self.memory`**: To store the state of the loop between executions.
-2.  **`"do_not_wait": True`**: On an input to act as the loop trigger.
-3.  **`NodeStateUpdate`**: A special object you can return from `execute` to change which inputs the node waits for in the *next* execution.
+Nodes can dynamically modify their socket behavior in two ways: during initialization in the `load()` method, and during execution via the return value. This enables powerful runtime behavior customization and loop creation.
 
-### The `execute` Method's Return Value
+### Method 1: Load-Time Configuration (Static Dynamic Configuration)
 
-Your `execute` method can now return two different things:
+Nodes can modify their socket configurations during the `load()` phase based on widget values. This approach sets the behavior once when the workflow initializes.
+
+#### Socket Configuration Access Methods
+
+The `BaseNode` class provides several methods for working with socket configurations:
+
+```python
+# Get configuration for a specific input socket
+socket_config = self.get_socket_config("my_input")
+
+# Get all input socket configurations
+all_configs = self.get_input_socket_configs()
+
+# Dynamically update socket configuration (complete replacement recommended)
+self.INPUT_SOCKETS["my_input"] = new_config
+```
+
+#### Load-Time Configuration Example
+
+Here's how to create a node that changes its socket behavior based on widget values:
+
+```python
+from core.definitions import BaseNode, SocketType, InputWidget
+
+class DynamicBehaviorNode(BaseNode):
+    CATEGORY = "Advanced"
+    
+    INPUT_SOCKETS = {
+        "data": {"type": SocketType.ANY, "array": True, "is_dependency": True}
+    }
+    OUTPUT_SOCKETS = {
+        "output": {"type": SocketType.ANY}
+    }
+    
+    # Widget controls for socket behavior
+    wait_for_input = InputWidget(widget_type="BOOLEAN", default=True)
+    use_dependency = InputWidget(widget_type="BOOLEAN", default=True)
+    
+    def load(self):
+        # Get widget values
+        should_wait = self.widget_values.get('wait_for_input', self.wait_for_input.default)
+        use_dependency = self.widget_values.get('use_dependency', self.use_dependency.default)
+        
+        # Build new socket configuration
+        socket_config = {"type": SocketType.ANY, "array": True}
+        
+        # Apply do_not_wait if waiting is disabled
+        if not should_wait:
+            socket_config["do_not_wait"] = True
+        
+        # Apply dependency if enabled and we're still waiting
+        # (do_not_wait takes priority over is_dependency)
+        if use_dependency and should_wait:
+            socket_config["is_dependency"] = True
+        
+        # Complete replacement to clear any existing flags
+        self.INPUT_SOCKETS["data"] = socket_config
+        
+    def execute(self, data):
+        # Process data based on current configuration
+        return (f"Processed {len(data)} items",)
+```
+
+### Method 2: Runtime Configuration (Dynamic State Updates)
+
+For creating loops and truly dynamic behavior, you can use `NodeStateUpdate` to change which inputs the node waits for during the *next* execution.
+
+#### The `execute` Method's Return Value
+
+Your `execute` method can return two different things:
 1.  **Just outputs**: `return (output_value,)`
 2.  **Outputs and a state update**: `return ((output_value,), NodeStateUpdate(wait_for_inputs=['new_input_to_wait_for']))`
 
-### Example: A Looping Accumulator
+#### Runtime Configuration Example: A Looping Accumulator
 
 Let's create a node that takes an initial number, and then adds to it every time a second input is triggered.
 
 ```python
 # in a file like nodes/custom_nodes.py
-from core.definitions import BaseNode, SocketType, NodeStateUpdate
+from core.definitions import BaseNode, SocketType, NodeStateUpdate, InputWidget
 
 class LoopingAccumulatorNode(BaseNode):
     CATEGORY = "Test"
@@ -451,7 +517,7 @@ class LoopingAccumulatorNode(BaseNode):
             self.memory['total'] = total
             self.memory['is_initialized'] = True
             
-            # Create the state update object.
+            # Create the state update object to change waiting behavior
             state_update = NodeStateUpdate(wait_for_inputs=['add_value'])
             
             if total > threshold_val:
@@ -470,6 +536,35 @@ class LoopingAccumulatorNode(BaseNode):
             else:
                 return (total, SKIP_OUTPUT)
 ```
+
+### Enhanced StringArrayCreatorNode Example
+
+The `StringArrayCreatorNode` demonstrates the load-time configuration pattern with three widget controls:
+
+- **wait_toggle**: Controls whether to wait for inputs (`do_not_wait` behavior)
+- **dependency_toggle**: Controls dependency pulling behavior
+- **single_item_passthrough**: When true, outputs single items directly instead of arrays
+
+### Key Principles for Dynamic Socket Configuration
+
+1. **Socket Priority**: `do_not_wait` always overrides `is_dependency`
+2. **Load-Time vs Runtime**: Use load-time configuration for static behavior, runtime updates for loops and state changes
+3. **Complete Replacement**: Use `self.INPUT_SOCKETS["name"] = new_config` to fully replace socket configuration and avoid flag pollution
+4. **Widget Integration**: Use `self.widget_values.get()` with defaults for consistent behavior
+
+### When to Use Each Method
+
+- **Load-Time Configuration**: When socket behavior should be determined by user settings and remain constant throughout workflow execution
+- **Runtime Configuration (NodeStateUpdate)**: When creating loops, state machines, or nodes that need to change their waiting behavior based on execution results
+
+### Creating Loops: Required Components
+
+To create loops, you need to combine three features:
+1.  **`self.memory`**: To store the state of the loop between executions
+2.  **`"do_not_wait": True`**: On an input to act as the loop trigger
+3.  **`NodeStateUpdate`**: To change which inputs the node waits for in subsequent executions
+
+This dynamic socket configuration system enables creating highly flexible nodes that can adapt their behavior at both initialization time and runtime, making workflows more powerful and customizable.
 ---
 
 ## 9. Advanced Feature: Sending Messages to the Client
