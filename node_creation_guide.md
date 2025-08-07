@@ -83,7 +83,7 @@ What happens if you set both `is_dependency: True` and `do_not_wait: True` on th
 
 Widgets are UI elements that appear on the node in the frontend, allowing users to input static values. They are defined as class attributes using the `InputWidget` class from `core.definitions`. 
 
-For a complete list of available widgets and their properties, see [section 5](#5-available-widgets-and-properties).
+For a complete list of available widgets and their properties, see [section 3](#3-available-widgets-and-properties).
 
 ---
 
@@ -157,57 +157,32 @@ That's it! Save the `custom_nodes.py` file. The next time you run the applicatio
 
 ---
 
-## 3. Advanced Example: A "MathOperation" Node
+## 3. Available Widgets and Properties
 
-This example demonstrates using the **pull/dependency** mechanism and a widget to control the node's behavior. This node will perform an operation (add or subtract) on two numbers.
+The frontend determines which UI widgets to render based on the `widget_type` string. Here are the currently supported types:
+
+| `widget_type` | Renders as... | Available `properties` in `InputWidget` |
+|---------------|--------------------|-------------------------------------------------|
+| `"TEXT"` | A text input box. | (None) |
+| `"NUMBER"` | A number input box.| `{"min": number, "max": number, "step": number}` |
+| `"SLIDER"` | A horizontal slider. | `{"min": number, "max": number, "step": number}` |
+| `"BOOLEAN"` | A toggle/checkbox. | (None) |
+| `"COMBO"` | A dropdown menu. | `{"values": ["list", "of", "options"]}` |
+
+**Examples of using properties:**
 
 ```python
-# nodes/custom_nodes.py (add this to the same file)
-import operator
+# A number widget that acts like a slider from 0 to 100 with a step of 5.
+percentage = InputWidget(widget_type="SLIDER", default=50, properties={"min": 0, "max": 100, "step": 5})
 
-class MathOperationNode(BaseNode):
-    CATEGORY = "Math"
+# A dropdown menu for selecting a mode.
+mode_selection = InputWidget(widget_type="COMBO", default="Option A", properties={"values": ["Option A", "Option B", "Option C"]})
 
-    # --- Sockets ---
-    # By setting "is_dependency": True, we tell the engine to "pull" these values
-    # before executing the node. This ensures both 'a' and 'b' are available.
-    INPUT_SOCKETS = {
-        "a": {"type": SocketType.NUMBER, "is_dependency": True},
-        "b": {"type": SocketType.NUMBER, "is_dependency": True}
-    }
-    OUTPUT_SOCKETS = {"result": {"type": SocketType.NUMBER}}
-
-    # --- Widgets ---
-    # Use a COMBO widget to provide a user-friendly dropdown for selecting the operation.
-    operation = InputWidget(widget_type="COMBO", default="ADD", properties={"values": ["ADD", "SUBTRACT", "MULTIPLY", "DIVIDE"]})
-
-    def load(self):
-        pass
-
-    def execute(self, a, b):
-        op_str = self.widget_values.get('operation', self.operation.default).upper()
-
-        op_map = {
-            "ADD": operator.add,
-            "SUBTRACT": operator.sub,
-            "MULTIPLY": operator.mul,
-            "DIVIDE": operator.truediv
-        }
-        op_func = op_map.get(op_str)
-
-        # Handle division by zero and unknown operations
-        if op_func is None:
-            return (float('nan'),)
-        if op_str == "DIVIDE" and float(b) == 0:
-            return (float('inf'),) # Or float('nan') depending on desired behavior
-
-        result = op_func(float(a), float(b))
-        return (result,)
+# A simple on/off switch.
+enable_feature = InputWidget(widget_type="BOOLEAN", default=True)
 ```
 
----
-
-## 4. Advanced Sockets: Dynamic Arrays
+## 4. Dynamic Sockets: Arrays
 
 The engine supports a powerful feature called **dynamic array sockets**. This allows you to create inputs and outputs that can accept a variable number of connections. In the UI, this appears as a per-array `+` and `-` button on the node, letting the user add or remove slots of the same type.
 
@@ -267,32 +242,7 @@ class SplitTextNode(BaseNode):
 -   **For outputs**, the corresponding return value from your `execute` method must be a Python `list`.
 -   The `is_dependency` flag is often useful for array inputs to ensure all connected data is available before execution if the connected data nodes are not expected to push data on their own.
 
-## 5. Available Widgets and Properties
-
-The frontend determines which UI widgets to render based on the `widget_type` string. Here are the currently supported types:
-
-| `widget_type` | Renders as... | Available `properties` in `InputWidget` |
-|---------------|--------------------|-------------------------------------------------|
-| `"TEXT"` | A text input box. | (None) |
-| `"NUMBER"` | A number input box.| `{"min": number, "max": number, "step": number}` |
-| `"SLIDER"` | A horizontal slider. | `{"min": number, "max": number, "step": number}` |
-| `"BOOLEAN"` | A toggle/checkbox. | (None) |
-| `"COMBO"` | A dropdown menu. | `{"values": ["list", "of", "options"]}` |
-
-**Examples of using properties:**
-
-```python
-# A number widget that acts like a slider from 0 to 100 with a step of 5.
-percentage = InputWidget(widget_type="SLIDER", default=50, properties={"min": 0, "max": 100, "step": 5})
-
-# A dropdown menu for selecting a mode.
-mode_selection = InputWidget(widget_type="COMBO", default="Option A", properties={"values": ["Option A", "Option B", "Option C"]})
-
-# A simple on/off switch.
-enable_feature = InputWidget(widget_type="BOOLEAN", default=True)
-```
-
-## 6. Advanced Feature: Skipping Outputs for Conditional Logic
+## 5. Skipping Outputs for Conditional Logic
 
 For creating nodes that control the flow of the graph (e.g., routing data based on a condition), you can instruct the engine to skip an output. This prevents any downstream nodes connected to that output from executing.
 
@@ -334,7 +284,7 @@ The `DecisionNode` in `conditional_nodes.py` is another great example of this, w
 
 ---
 
-## 7. Advanced Feature: Asynchronous Nodes
+## 6. Asynchronous Nodes
 
 The engine supports nodes that perform non-blocking operations, such as waiting for a timer or making an external API call. This is achieved by defining the `execute` method as an `async` function.
 
@@ -399,7 +349,7 @@ class WaitNode(BaseNode):
 
 ---
 
-## 8. Advanced Feature: Dynamic Socket Configuration and Loops
+## 7. Dynamic Socket Configuration and Loops
 
 Nodes can dynamically modify their socket behavior in two ways: during initialization in the `load()` method, and during execution via the return value. This enables powerful runtime behavior customization and loop creation.
 
@@ -567,7 +517,7 @@ To create loops, you need to combine three features:
 This dynamic socket configuration system enables creating highly flexible nodes that can adapt their behavior at both initialization time and runtime, making workflows more powerful and customizable.
 ---
 
-## 9. Advanced Feature: Sending Messages to the Client
+## 8. Sending Messages to the Client
 
 Nodes have a built-in, structured way to send messages directly to the connected client (e.g., the frontend UI or a test runner). This is useful for logging, debugging, or sending custom events to trigger UI updates, without using an output socket.
 
@@ -655,7 +605,7 @@ class LoggingProcessorNode(BaseNode):
 
 ---
 
-## 10. Advanced Feature: Creating Event Nodes
+## 9. Creating Event Nodes
 
 Event nodes are a special category of nodes that, instead of being triggered by an input, listen for an external event (like a webhook, message queue, or user input) and start a new workflow run when that event occurs. This enables powerful features like parallel workflow execution and integration with external systems.
 
@@ -797,41 +747,7 @@ The `DisplayInputEventNode` is a special event node that enables chat-like inter
 
 ---
 
-## 11. Recent Node Examples
-
-### TriggerDetectionNode
-A utility node that demonstrates advanced socket configuration:
-```python
-class TriggerDetectionNode(BaseNode):
-    CATEGORY = "Utility"
-    INPUT_SOCKETS = {
-        "dependency_input": {"type": SocketType.ANY, "is_dependency": True},
-        "trigger_input": {"type": SocketType.ANY, "do_not_wait": True}
-    }
-    OUTPUT_SOCKETS = {"trigger_source": {"type": SocketType.TEXT}}
-    
-    def execute(self, dependency_input=None, trigger_input=None):
-        if trigger_input is not None:
-            return (trigger_input,)  # Returns the actual trigger input data
-        else:
-            return (dependency_input,)  # Returns the actual dependency input data
-```
-
-This node shows how to:
-- Use both dependency and do_not_wait socket configurations
-- Pass through input data based on which socket triggered execution
-- Create utility nodes for workflow control
-
-### LLMNode (AI Integration)
-The `LLMNode` demonstrates advanced features like:
-- Universal AI model access via litellm
-- Context integration from display panel and runtime memory
-- Multimodal support (text + images) with dedicated image socket
-- **Fully implemented and tested** tool calling system with MCP-inspired design
-- Base64 image processing and automatic format detection
-- Support for servable paths, external URLs, and embedded base64 images
-
-## 12. Creating Tool Nodes for LLM Integration
+## 10. Creating Tool Nodes for LLM Integration
 
 Tool nodes are special nodes designed to work with the `LLMNode`'s **fully tested and functional** tool calling system. They follow **Model Context Protocol (MCP)**-inspired patterns and operate in dual modes to support AI tool calling workflows.
 
@@ -1071,248 +987,48 @@ To use your tool nodes with the LLM node:
 
 The LLM node handles all the complex routing, message sequencing, and OpenAI API compatibility automatically. This system has been thoroughly tested with multiple tool types and complex tool calling scenarios.
 
-### Image Generation Tool Node Example
+## 11. File Management
 
-Here's a complete example of the `GPTImageToolNode` that demonstrates advanced tool node patterns with image generation:
+The system includes a centralized file management system through the `ServableFileManager` class, which handles file storage and automatic serving with CORS support.
 
-```python
-from core.definitions import BaseNode, SocketType, InputWidget, MessageType
-from core.file_utils import ServableFileManager
-import uuid
-import base64
+### ServableFileManager Usage
 
-class GPTImageToolNode(BaseNode):
-    """
-    Tool node for generating images using OpenAI's gpt-image-1 model.
-    Demonstrates advanced patterns: async execution, file management,
-    widget-controlled parameters, and comprehensive error handling.
-    """
-    CATEGORY = "Tools"
-    
-    INPUT_SOCKETS = {
-        "tool_call": {"type": SocketType.ANY, "do_not_wait": True}
-    }
-    
-    OUTPUT_SOCKETS = {
-        "output": {"type": SocketType.ANY}
-    }
-    
-    # Configuration widgets (not exposed to AI, used internally)
-    api_key = InputWidget(widget_type="TEXT", default="", description="OpenAI API Key")
-    size = InputWidget(
-        widget_type="COMBO", 
-        default="1024x1024",
-        properties={"values": ["1024x1024", "1024x1536", "1536x1024"]}
-    )
-    quality = InputWidget(
-        widget_type="COMBO",
-        default="high",
-        properties={"values": ["low", "medium", "high", "auto"]}
-    )
-
-    def load(self):
-        if litellm is None:
-            raise ImportError("litellm library is required")
-        self.file_manager = ServableFileManager()
-
-    async def execute(self, tool_call=None):
-        # Tool definition (MCP-compatible) - only expose prompt to AI
-        tool_definition = {
-            "name": "generate_image",
-            "description": "Generate high-quality images using OpenAI's gpt-image-1 model",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "prompt": {
-                        "type": "string",
-                        "description": "Detailed description of the image to generate"
-                    }
-                },
-                "required": ["prompt"]
-            }
-        }
-        
-        # Return definition if no tool call
-        if tool_call is None:
-            return (tool_definition,)
-        
-        # Process tool call
-        try:
-            if isinstance(tool_call, dict) and 'arguments' in tool_call:
-                args = tool_call['arguments']
-                prompt = str(args.get('prompt', '')).strip()
-                
-                # Use widget values (not exposed to AI)
-                size = str(self.widget_values.get('size', self.size.default))
-                quality = str(self.widget_values.get('quality', self.quality.default))
-                api_key_val = self.widget_values.get('api_key', self.api_key.default)
-                
-                if not prompt:
-                    return ({"id": tool_call.get('id'), "error": "Prompt required"},)
-                
-                if not api_key_val:
-                    return ({"id": tool_call.get('id'), "error": "API key required"},)
-                
-                # Set API key and generate image
-                litellm.openai_key = api_key_val
-                
-                response = await litellm.aimage_generation(
-                    model="gpt-image-1",
-                    prompt=prompt,
-                    size=size,
-                    quality=quality,
-                    n=1
-                )
-                
-                # Process base64 response directly (no URL downloading)
-                first_data_item = response.data[0]
-                if hasattr(first_data_item, 'b64_json') and first_data_item.b64_json:
-                    image_data = base64.b64decode(first_data_item.b64_json)
-                    filename = f"gpt_image_{uuid.uuid4().hex[:8]}.png"
-                    servable_url = self.file_manager.save_file(image_data, filename)
-                    
-                    await self.send_message_to_client(MessageType.LOG,
-                        {"message": f"✅ Image generated: {filename}"})
-                    
-                    # Return structured result with instructions
-                    return ({
-                        "id": tool_call.get('id'),
-                        "result": {
-                            "success": True,
-                            "message": f"Image generated: {servable_url}",
-                            "servable_url": servable_url,
-                            "filename": filename,
-                            "instructions": "Always display the servable_url to the user"
-                        }
-                    },)
-                else:
-                    return ({"id": tool_call.get('id'), "error": "No image data received"},)
-            else:
-                return ({"id": tool_call.get('id'), "error": "Invalid tool call format"},)
-                
-        except Exception as e:
-            return ({"id": tool_call.get('id'), "error": f"Generation error: {str(e)}"},)
-```
-
-This example demonstrates:
-- **Async Tool Execution**: Using `async def execute()` for API calls
-- **File Management**: Using `ServableFileManager` for automatic file serving
-- **Base64 Processing**: Direct base64 handling without URL downloads
-- **Widget-Controlled Parameters**: Size/quality from widgets, not AI input
-- **Client Messaging**: Using `send_message_to_client()` for progress updates
-- **Comprehensive Error Handling**: Structured error responses for all failure modes
-- **Result Instructions**: Guiding AI to display the generated image link
-
-## 13. Image Processing Nodes
-
-The system includes specialized nodes for handling images in AI workflows. These demonstrate advanced patterns for file management, conditional output, and image link processing.
-
-### ImageLinkExtractNode Pattern
-
-This node shows how to create conditional outputs using `SKIP_OUTPUT`:
-
-```python
-from core.definitions import BaseNode, SocketType, InputWidget, SKIP_OUTPUT
-import re
-
-class ImageLinkExtractNode(BaseNode):
-    """
-    Extracts image links from text with conditional output.
-    Demonstrates regex pattern matching and SKIP_OUTPUT usage.
-    """
-    CATEGORY = "Image"
-
-    INPUT_SOCKETS = {
-        "text": {"type": SocketType.TEXT}
-    }
-    
-    OUTPUT_SOCKETS = {
-        "text": {"type": SocketType.TEXT},      # Cleaned text
-        "image_link": {"type": SocketType.TEXT}  # Extracted link
-    }
-    
-    extract_first_only = InputWidget(
-        widget_type="BOOLEAN",
-        default=True,
-        description="Extract only the first image link found"
-    )
-
-    def load(self):
-        """Initialize regex patterns for comprehensive image detection."""
-        self.patterns = [
-            r'!\[([^\]]*)\]\(([^)]+)\)',  # Markdown: ![alt](url)
-            r'<img[^>]+src=["\']([^"\']+)["\'][^>]*>',  # HTML: <img src="url">
-            r'(https?://[^\s]+\.(?:jpg|jpeg|png|gif|webp|bmp|svg)(?:\?[^\s]*)?)',  # URLs
-            r'(/servable/[^\s]+)',  # Servable links
-            r'(data:image/[^;]+;base64,[A-Za-z0-9+/=]+)'  # Base64 data URLs
-        ]
-
-    def execute(self, text):
-        if not text:
-            return (SKIP_OUTPUT, SKIP_OUTPUT)  # Skip both outputs if no text
-
-        extracted_links = []
-        
-        # Search for image links using all patterns
-        for pattern in self.patterns:
-            matches = re.finditer(pattern, text, re.IGNORECASE)
-            for match in matches:
-                # Handle both markdown (2 groups) and direct URL (1 group) patterns
-                link = match.group(2) if len(match.groups()) == 2 else match.group(1)
-                extracted_links.append({
-                    'link': link,
-                    'full_match': match.group(0),
-                    'start': match.start(),
-                    'end': match.end()
-                })
-
-        # No image links found - output only cleaned text
-        if not extracted_links:
-            return (text, SKIP_OUTPUT)
-
-        # Process first link, remove from text
-        first_link = extracted_links[0]
-        cleaned_text = text[:first_link['start']] + text[first_link['end']:]
-        cleaned_text = cleaned_text.strip()
-        
-        # Use SKIP_OUTPUT for empty cleaned text
-        text_output = cleaned_text if cleaned_text else SKIP_OUTPUT
-        image_output = first_link['link']
-        
-        return (text_output, image_output)
-```
-
-### File Management with ServableFileManager
-
-For nodes that need to handle file operations:
+For nodes that need to handle file operations, import and use the `ServableFileManager`:
 
 ```python
 from core.file_utils import ServableFileManager
 import uuid
 
-class MyImageNode(BaseNode):
+class MyFileProcessingNode(BaseNode):
     def load(self):
         self.file_manager = ServableFileManager()
     
-    async def execute(self, image_data):
+    async def execute(self, file_data):
         # Save binary data with automatic filename generation
         filename = f"processed_{uuid.uuid4().hex[:8]}.png"
-        servable_url = self.file_manager.save_file(image_data, filename)
+        servable_url = self.file_manager.save_file(file_data, filename)
         
         # URL is automatically accessible at http://localhost:8000/servable/filename
         return (servable_url, filename)
 ```
 
-### Key Patterns for Image Processing Nodes
+### Key Features
 
-1. **Conditional Output with SKIP_OUTPUT**: Skip outputs when no relevant data is found
-2. **Comprehensive Pattern Matching**: Support multiple image formats (markdown, HTML, URLs, base64)
-3. **File Management Integration**: Use `ServableFileManager` for automatic CORS-friendly file serving
-4. **Base64 Direct Processing**: Handle base64 images directly without URL downloading
-5. **Widget-Controlled Behavior**: Use widgets for parameters not exposed to AI systems
-6. **Progress Messaging**: Use `send_message_to_client()` for user feedback in async operations
+1. **Automatic File Serving**: Files are automatically served at `/servable/` paths with CORS support
+2. **Base64 Processing**: Direct handling of base64 data without temporary files
+3. **UUID-based Naming**: Automatic generation of unique filenames to prevent conflicts
+4. **Binary Data Support**: Handles any binary file format (images, documents, etc.)
+5. **CORS-Friendly**: All served files include proper CORS headers for frontend access
+6. **Memory Management**: Efficient handling of file data without unnecessary duplication
 
-## 14. Event Communication Nodes
+### Best Practices
+
+- Always use `ServableFileManager` for file operations that need web access
+- Generate unique filenames using `uuid.uuid4().hex[:8]` or similar
+- Return both the servable URL and filename for downstream processing
+- Use base64 encoding for embedding files directly in JSON responses when needed
+
+## 12. Event Communication Nodes
 
 The system includes specialized nodes for inter-workflow communication, enabling parallel workflow coordination and data exchange:
 
@@ -1368,7 +1084,7 @@ class ReceiveEventNode(EventNode):
 - Include proper error handling and timeout logic for await operations
 - Follow the established pattern: Send → Receive → Process → Return
 
-## 15. Best Practices and Considerations
+## 13. Best Practices and Considerations
 
 - **Keep Nodes Atomic**: Each node should perform a single, clear task. Instead of one giant node that does three things, create three smaller nodes. This makes your workflows more flexible and easier to debug.
 - **Initialize Memory**: When using stateful nodes, it is best practice to initialize all expected keys for `self.memory` in the `load()` method. This prevents potential `KeyError` exceptions and makes the node's expected state clear.
