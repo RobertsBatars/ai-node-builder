@@ -19,7 +19,8 @@ class LLMNode(BaseNode):
     
     INPUT_SOCKETS = {
         "prompt": {"type": SocketType.TEXT, "is_dependency": True},
-        "system_prompt": {"type": SocketType.TEXT, "is_dependency": True}, 
+        "system_prompt": {"type": SocketType.TEXT, "is_dependency": True},
+        "image": {"type": SocketType.TEXT, "is_dependency": True},
         "tools": {"type": SocketType.ANY, "array": True, "is_dependency": True}
     }
     
@@ -71,8 +72,14 @@ class LLMNode(BaseNode):
             self.memory['pending_tool_calls'] = None
         if 'current_execution_messages' not in self.memory:
             self.memory['current_execution_messages'] = []
+        if 'processed_tool_results' not in self.memory:
+            self.memory['processed_tool_results'] = {}
+        if 'base_messages_built' not in self.memory:
+            self.memory['base_messages_built'] = False  # Track if we've built the base message array
+        if 'base_messages' not in self.memory:
+            self.memory['base_messages'] = []  # Store the base conversation messages
 
-    async def execute(self, prompt=None, system_prompt=None, tools=None):
+    async def execute(self, prompt=None, system_prompt=None, image=None, tools=None):
         """Execute the LLM call with context integration and tool support."""
         try:
             # Check if we received tool results (tools parameter contains results instead of definitions)
@@ -88,6 +95,11 @@ class LLMNode(BaseNode):
                     tool_results = actual_tool_results
                     tools = None  # Clear tools so we use saved definitions
                     await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Received {len(tool_results)} tool results from previous execution"})
+                    
+                    # Store these tool results for future reference
+                    for tool_result in tool_results:
+                        if tool_result and isinstance(tool_result, dict) and 'id' in tool_result:
+                            self.memory['processed_tool_results'][tool_result['id']] = tool_result
             # Get widget values
             provider_val = self.widget_values.get('provider', self.provider.default)
             model_val = self.widget_values.get('model', self.model.default)
@@ -126,72 +138,75 @@ class LLMNode(BaseNode):
             await self.send_message_to_client(MessageType.LOG, {"message": f"🤖 LLM Config: model={full_model}, temp={temperature_val}, max_tokens={max_tokens_val}"})
             await self.send_message_to_client(MessageType.LOG, {"message": f"📋 Context Settings: display={use_display_val} (filter={display_filter_val}), memory={use_memory_val}, tools={enable_tools_val}"})
 
-            # Build messages array
+            # Build messages array - simple approach
             messages = []
+            current_prompt_added = 0
+            display_message_count = 0
+            memory_message_count = 0
             
-            # Add system prompt
+            # Step 1: Add system prompt
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
                 await self.send_message_to_client(MessageType.LOG, {"message": f"📝 Added system prompt ({len(system_prompt)} chars)"})
 
-            # Add display context if enabled
-            display_message_count = 0
-            if use_display_val:
-                # RAW DUMP: Show entire display context before processing
-                raw_context = self.global_state.get('display_context', [])
-                await self.send_message_to_client(MessageType.DEBUG, {"message": f"🔍 RAW DISPLAY CONTEXT DUMP ({len(raw_context)} entries):"})
-                for i, entry in enumerate(raw_context):
-                    raw_dump = json.dumps(entry, indent=2)
-                    await self.send_message_to_client(MessageType.DEBUG, {"message": f"  RAW[{i}]: {raw_dump}"})
+            # Step 2: Build base messages array ONCE on first run
+            if not self.memory['base_messages_built']:
+                await self.send_message_to_client(MessageType.LOG, {"message": "🏗️ Building base messages array for first time"})
                 
-                display_messages = await self._get_display_context_messages(display_filter_val, current_prompt=prompt)
-                messages.extend(display_messages)
-                display_message_count = len(display_messages)
-                await self.send_message_to_client(MessageType.LOG, {"message": f"💬 Added {display_message_count} messages from display context (filter: {display_filter_val})"})
-                
-                # Log display context details for debugging
-                if display_message_count > 0:
-                    for i, msg in enumerate(display_messages[-3:]):  # Show last 3 messages
-                        preview = msg['content'][:100] + "..." if len(msg['content']) > 100 else msg['content']
-                        await self.send_message_to_client(MessageType.DEBUG, {"message": f"  Display msg {i}: {msg['role']} - {preview}"})
+                # Add display context first (historical conversation)
+                if use_display_val:
+                    # RAW DUMP: Show entire display context before processing
+                    raw_context = self.global_state.get('display_context', [])
+                    await self.send_message_to_client(MessageType.DEBUG, {"message": f"🔍 RAW DISPLAY CONTEXT DUMP ({len(raw_context)} entries):"})
+                    for i, entry in enumerate(raw_context):
+                        raw_dump = json.dumps(entry, indent=2)
+                        await self.send_message_to_client(MessageType.DEBUG, {"message": f"  RAW[{i}]: {raw_dump}"})
+                    
+                    # Process display context in chronological order
+                    display_messages = await self._get_display_context_messages(display_filter_val, current_prompt=prompt)
+                    self.memory['base_messages'].extend(display_messages)
+                    display_message_count = len(display_messages)
+                    await self.send_message_to_client(MessageType.LOG, {"message": f"💬 Added {display_message_count} messages from display context to base array"})
 
-            # Add runtime memory if enabled
-            memory_message_count = 0
-            if use_memory_val:
-                memory_messages = self.memory.get('conversation_history', [])
-                messages.extend(memory_messages)
-                memory_message_count = len(memory_messages)
-                await self.send_message_to_client(MessageType.LOG, {"message": f"🧠 Added {memory_message_count} messages from runtime memory"})
-                
-                # Log memory context details for debugging
-                if memory_message_count > 0:
-                    for i, msg in enumerate(memory_messages[-3:]):  # Show last 3 messages
-                        preview = msg['content'][:100] + "..." if len(msg['content']) > 100 else msg['content']
-                        await self.send_message_to_client(MessageType.DEBUG, {"message": f"  Memory msg {i}: {msg['role']} - {preview}"})
+                # Add runtime memory to base if enabled
+                if use_memory_val:
+                    memory_messages = self.memory.get('conversation_history', [])
+                    self.memory['base_messages'].extend(memory_messages)
+                    memory_message_count = len(memory_messages)
+                    await self.send_message_to_client(MessageType.LOG, {"message": f"🧠 Added {memory_message_count} messages from runtime memory to base array"})
 
-            # Add current prompt - always include it unless we're in a tool result continuation
-            current_prompt_added = 0
-            if prompt and not tool_results:
-                # Check if prompt contains image data (base64)
-                user_message = self._process_multimodal_input(prompt, full_model)
-                messages.append(user_message)
-                current_prompt_added = 1
-                # Store the current prompt for this execution session
-                self.memory['current_execution_messages'] = [user_message]
-                await self.send_message_to_client(MessageType.LOG, {"message": f"📝 Added current prompt ({len(prompt)} chars)"})
-            elif tool_results and self.memory.get('current_execution_messages'):
-                # Add the original prompt from this execution session
-                original_messages = self.memory.get('current_execution_messages', [])
-                for msg in original_messages:
-                    if msg['role'] == 'user':
-                        messages.append(msg)
-                        current_prompt_added = 1
-                        await self.send_message_to_client(MessageType.LOG, {"message": f"📝 Re-added original prompt from execution session ({len(msg['content'])} chars)"})
-                        break
-            elif tool_results:
-                await self.send_message_to_client(MessageType.LOG, {"message": f"🚫 No original prompt found for tool result processing (prompt='{prompt}')"})
+                # Add current user prompt at the END
+                if prompt and not tool_results:
+                    user_message = await self._process_multimodal_input(prompt, image, full_model)
+                    self.memory['base_messages'].append(user_message)
+                    current_prompt_added = 1
+                    # Store for execution session
+                    self.memory['current_execution_messages'] = [user_message]
+                    
+                    # Log prompt info
+                    prompt_info = f"📝 Added current prompt to base array ({len(prompt)} chars)"
+                    if image:
+                        if image.startswith('/servable/'):
+                            prompt_info += f" + servable image: {image.split('/')[-1]}"
+                        elif image.startswith('data:image/'):
+                            prompt_info += " + base64 image"
+                        elif image.startswith('http'):
+                            prompt_info += f" + external image: {image[:50]}..."
+                    await self.send_message_to_client(MessageType.LOG, {"message": prompt_info})
 
-            # Add tool results if we received them (AFTER display context and memory)
+                # Mark as built
+                self.memory['base_messages_built'] = True
+                await self.send_message_to_client(MessageType.LOG, {"message": f"✅ Base messages array built with {len(self.memory['base_messages'])} messages"})
+
+            # Step 3: Use the base messages array
+            messages.extend(self.memory['base_messages'])
+            current_prompt_added = 1 if any(msg['role'] == 'user' for msg in self.memory['base_messages']) else 0
+            
+            # Handle tool result continuation - no need to re-add user prompt, it's already in base_messages
+            if tool_results:
+                await self.send_message_to_client(MessageType.LOG, {"message": "🔧 Using base messages array for tool result continuation"})
+
+            # Add tool results if we received them (AFTER all context)
             tool_results_added = 0
             if tool_results:
                 await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Processing {len(tool_results)} tool results"})
@@ -211,8 +226,11 @@ class LLMNode(BaseNode):
                         await self.send_message_to_client(MessageType.ERROR, {"message": "🔧 ERROR: No assistant messages with tool calls found!"})
                         return ("Error: Tool results received without preceding tool calls", [])
                 
-                # Create mapping of tool call IDs to tool results
+                # Create mapping of tool call IDs to tool results (includes ALL processed results)
                 tool_result_map = {}
+                # Include all previously processed tool results
+                tool_result_map.update(self.memory.get('processed_tool_results', {}))
+                # Add the current batch
                 for tool_result in tool_results:
                     if tool_result and isinstance(tool_result, dict) and 'id' in tool_result:
                         tool_result_map[tool_result['id']] = tool_result
@@ -242,21 +260,27 @@ class LLMNode(BaseNode):
                             await self.send_message_to_client(MessageType.DEBUG, {"message": f"🔧 Added tool result for call ID {tool_call_id}"})
                 
                 await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Added {tool_results_added} tool-related messages (assistant messages + tool results)"})
+                
+                # Also add tool results to runtime memory for proper context preservation
+                if use_memory_val:
+                    for tool_result in tool_results:
+                        if tool_result and isinstance(tool_result, dict) and 'id' in tool_result:
+                            tool_message = {
+                                "role": "tool",
+                                "tool_call_id": tool_result['id'],
+                                "content": json.dumps(tool_result.get('result', tool_result.get('error', 'Unknown result')))
+                            }
+                            self.memory['conversation_history'].append(tool_message)
+                    await self.send_message_to_client(MessageType.LOG, {"message": f"💾 Added {len(tool_results)} tool result messages to runtime memory"})
 
-            # Log actual vs expected message count to detect deduplication
-            expected_count = (1 if system_prompt else 0) + display_message_count + memory_message_count + tool_results_added + current_prompt_added
-            actual_count = len(messages)
-            
-            if actual_count != expected_count:
-                await self.send_message_to_client(MessageType.LOG, {"message": f"📊 Message count: {actual_count} (expected {expected_count}) - deduplication occurred"})
-            else:
-                await self.send_message_to_client(MessageType.LOG, {"message": f"📊 Total messages to send: {actual_count} (system: {1 if system_prompt else 0}, display: {display_message_count}, memory: {memory_message_count}, tools: {tool_results_added}, current: {current_prompt_added})"})
-            
             # Show final message breakdown for debugging
+            actual_count = len(messages)
             user_msgs = sum(1 for m in messages if m['role'] == 'user')
             assistant_msgs = sum(1 for m in messages if m['role'] == 'assistant') 
             system_msgs = sum(1 for m in messages if m['role'] == 'system')
             tool_msgs = sum(1 for m in messages if m['role'] == 'tool')
+            
+            await self.send_message_to_client(MessageType.LOG, {"message": f"📊 Total messages to send: {actual_count}"})
             await self.send_message_to_client(MessageType.DEBUG, {"message": f"📋 Final breakdown: {user_msgs} user, {assistant_msgs} assistant, {system_msgs} system, {tool_msgs} tool = {user_msgs + assistant_msgs + system_msgs + tool_msgs} total"})
 
             # Prepare tool definitions
@@ -359,6 +383,13 @@ class LLMNode(BaseNode):
                     self.memory['current_execution_messages'] = []
                 self.memory['current_execution_messages'].append(assistant_message)
                 
+                # Also add to runtime memory if enabled for proper context preservation
+                if use_memory_val:
+                    if 'conversation_history' not in self.memory:
+                        self.memory['conversation_history'] = []
+                    self.memory['conversation_history'].append(assistant_message)
+                    await self.send_message_to_client(MessageType.LOG, {"message": f"💾 Added assistant message with tool calls to runtime memory"})
+                
                 # Also keep the old system for backward compatibility
                 self.memory['pending_tool_calls'] = assistant_message
                 await self.send_message_to_client(MessageType.LOG, {"message": f"💾 Stored assistant message with {len(tool_calls)} tool calls in execution session"})
@@ -417,9 +448,13 @@ class LLMNode(BaseNode):
                 self.memory['conversation_history'].append({"role": "assistant", "content": response_content})
                 await self.send_message_to_client(MessageType.LOG, {"message": f"💾 Stored conversation in memory (total: {len(self.memory['conversation_history'])} messages)"})
             
-            # Clear pending tool calls and execution session since we're not making any more tool calls
+            # Clear pending tool calls, execution session, and processed tool results since we're not making any more tool calls
             self.memory['pending_tool_calls'] = None
             self.memory['current_execution_messages'] = []
+            self.memory['processed_tool_results'] = {}
+            # Reset for next workflow run
+            self.memory['base_messages_built'] = False
+            self.memory['base_messages'] = []
             await self.send_message_to_client(MessageType.LOG, {"message": "🧹 Cleared execution session - no more tool calls"})
             
             # Add Chat: prefix for self-filtering when display context is enabled with user_and_self filter
@@ -487,38 +522,127 @@ class LLMNode(BaseNode):
         await self.send_message_to_client(MessageType.DEBUG, {"message": f"🔍 FILTERING RESULT: {len(messages)} messages after filtering"})
         return messages
 
-    def _process_multimodal_input(self, prompt: str, model: str) -> Dict[str, Any]:
-        """Process input that may contain images for vision-capable models."""
+    async def _process_multimodal_input(self, prompt: str, image: str = None, model: str = "") -> Dict[str, Any]:
+        """
+        Process input that may contain images for vision-capable models.
+        Priority: dedicated image socket > embedded base64 in prompt
+        Supports servable URLs, external URLs, and base64 data URLs.
+        """
+        await self.send_message_to_client(MessageType.DEBUG, {"message": f"🖼️ _process_multimodal_input called with: prompt='{prompt}', image='{image}', model='{model}'"})
+        
         # Vision-capable models
         vision_models = [
             "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4-vision-preview",
-            "claude-3-5-sonnet-20241022", "claude-3-opus-20240229",
+            "claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-5-haiku-latest",
             "gemini-1.5-pro", "gemini-1.5-flash"
         ]
         
-        # Check if model supports vision and if prompt contains base64 image
-        if model in vision_models and "data:image/" in prompt:
-            try:
-                # Split text and image data
-                parts = prompt.split("data:image/")
-                text_part = parts[0].strip()
-                
-                if len(parts) > 1:
-                    # Extract image data
-                    image_part = "data:image/" + parts[1]
-                    
-                    return {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": text_part} if text_part else {"type": "text", "text": "Analyze this image:"},
-                            {"type": "image_url", "image_url": {"url": image_part}}
-                        ]
-                    }
-            except Exception:
-                # Fall back to text-only if image processing fails
-                pass
+        # Only process images for vision-capable models
+        model_name = model.split('/')[-1] if '/' in model else model
+        await self.send_message_to_client(MessageType.DEBUG, {"message": f"🖼️ Model name extracted: '{model_name}', is vision capable: {model_name in vision_models}"})
         
+        if model_name not in vision_models:
+            await self.send_message_to_client(MessageType.DEBUG, {"message": "🖼️ Model not vision-capable, returning text-only message"})
+            return {"role": "user", "content": prompt}
+        
+        image_url = None
+        
+        # Priority 1: Dedicated image socket
+        if image:
+            await self.send_message_to_client(MessageType.DEBUG, {"message": f"🖼️ Processing dedicated image socket: '{image}'"})
+            if image.startswith('/servable/'):
+                # Convert servable path to full URL
+                image_url = f"http://localhost:8000{image}"
+                await self.send_message_to_client(MessageType.DEBUG, {"message": f"🖼️ Converted servable path to URL: '{image_url}'"})
+            elif image.startswith(('http://', 'https://')):
+                # External URL - use directly
+                image_url = image
+                await self.send_message_to_client(MessageType.DEBUG, {"message": f"🖼️ Using external URL directly: '{image_url}'"})
+            elif image.startswith('data:image/'):
+                # Base64 data URL - use directly
+                image_url = image
+                await self.send_message_to_client(MessageType.DEBUG, {"message": f"🖼️ Using base64 data URL (length: {len(image)})"})
+            else:
+                # Assume it's a filename in servable folder
+                image_url = f"http://localhost:8000/servable/{image}"
+                await self.send_message_to_client(MessageType.DEBUG, {"message": f"🖼️ Assumed filename, converted to URL: '{image_url}'"})
+        
+        # Priority 2: Check for embedded image links in prompt (fallback)
+        else:
+            await self.send_message_to_client(MessageType.DEBUG, {"message": "🖼️ No dedicated image, checking for embedded images in prompt"})
+            extracted_url, cleaned_prompt = self._extract_image_from_prompt(prompt)
+            if extracted_url:
+                image_url = extracted_url
+                prompt = cleaned_prompt  # Use the cleaned prompt without image syntax
+                await self.send_message_to_client(MessageType.DEBUG, {"message": f"🖼️ Found embedded image: '{extracted_url}', cleaned prompt: '{cleaned_prompt}'"})
+        
+        # Create multimodal message if we have an image
+        if image_url:
+            content = [
+                {"type": "text", "text": prompt if prompt.strip() else "Analyze this image:"},
+                {"type": "image_url", "image_url": {"url": image_url}}
+            ]
+            await self.send_message_to_client(MessageType.DEBUG, {"message": f"🖼️ Created multimodal message with image URL: '{image_url}'"})
+            return {"role": "user", "content": content}
+        
+        # Text-only fallback
+        await self.send_message_to_client(MessageType.DEBUG, {"message": "🖼️ No image found, returning text-only message"})
         return {"role": "user", "content": prompt}
+
+    def _extract_image_from_prompt(self, prompt: str):
+        """
+        Extract the first image link found in prompt text and return (image_url, cleaned_prompt).
+        Supports markdown images, HTML images, direct URLs, servable links, and base64 data URLs.
+        Returns (None, original_prompt) if no image found.
+        """
+        import re
+        
+        # Same patterns as ImageLinkExtractNode
+        patterns = [
+            # Markdown images: ![alt text](url)
+            r'!\[([^\]]*)\]\(([^)]+)\)',
+            # HTML images: <img src="url" ...>
+            r'<img[^>]+src=["\']([^"\']+)["\'][^>]*>',
+            # Direct image URLs
+            r'(https?://[^\s]+\.(?:jpg|jpeg|png|gif|webp|bmp|svg)(?:\?[^\s]*)?)',
+            # Servable links
+            r'(/servable/[^\s]+)',
+            # Data URLs for images
+            r'(data:image/[^;]+;base64,[A-Za-z0-9+/=]+)'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, prompt, re.IGNORECASE)
+            if match:
+                if len(match.groups()) == 2:
+                    # Markdown format: (alt_text, url)
+                    extracted_url = match.group(2)
+                else:
+                    # Direct URL match
+                    extracted_url = match.group(1)
+                
+                # Remove the image syntax from prompt
+                cleaned_prompt = prompt[:match.start()] + prompt[match.end():]
+                cleaned_prompt = cleaned_prompt.strip()
+                
+                # Process the extracted URL
+                if extracted_url.startswith('/servable/'):
+                    # Convert servable path to full URL
+                    processed_url = f"http://localhost:8000{extracted_url}"
+                elif extracted_url.startswith(('http://', 'https://')):
+                    # External URL - use directly (LiteLLM will handle download if needed)
+                    processed_url = extracted_url
+                elif extracted_url.startswith('data:image/'):
+                    # Base64 data URL - use directly
+                    processed_url = extracted_url
+                else:
+                    # Assume it's a filename in servable folder
+                    processed_url = f"http://localhost:8000/servable/{extracted_url}"
+                
+                return processed_url, cleaned_prompt
+        
+        # No image found
+        return None, prompt
 
     def _prepare_tool_definitions(self, tools: List[Any]) -> List[Dict[str, Any]]:
         """Convert tool inputs to litellm-compatible tool definitions."""

@@ -225,7 +225,47 @@ The application now includes comprehensive AI integration with experimental tool
 * **Intermediate Message Output**: Optional `output_intermediate_messages` widget allows displaying LLM reasoning before tool calls.
 * **✅ Status**: Tool calling functionality is fully implemented, tested, and working with multiple tool types and chained sequences.
 
-### **5.3. New Utility Nodes and Enhanced Features**
+### **5.3. Image Processing System (Fully Implemented)**
+
+A comprehensive image processing system was implemented to handle image generation and file management for AI workflows.
+
+**Servable File Management**:
+* **ServableFileManager** (`core/file_utils.py`): Centralized file management system for automatic file serving without CORS issues
+* Handles file uploads, automatic duplicate filename resolution, and URL generation
+* Supports base64 image saving with proper file extension detection
+* Integration with FastAPI static file serving for seamless browser access
+
+**Image Generation Nodes**:
+* **GPTImageNode** (Standalone): Direct image generation node with configurable size/quality widgets
+* **GPTImageToolNode** (MCP-Compatible): Tool node for LLM integration with proper dual-mode operation
+* Both nodes use OpenAI's `gpt-image-1` model (superior to DALL-E in 2025)
+* Base64 direct processing (no URL downloading) for optimal performance
+* Automatic file saving to servable directory with unique filenames
+
+**Image Link Processing**:
+* **ImageLinkExtractNode**: Extracts image links from text with conditional output using `SKIP_OUTPUT`
+* Supports multiple formats: Markdown images, HTML images, direct URLs, servable links, base64 data URLs
+* Configurable extraction (first only vs all) with intelligent text cleaning
+
+**LLM Multimodal Integration**:
+* Enhanced `LLMNode` with dedicated image socket for vision-capable models
+* Automatic image URL processing: servable paths, external URLs, base64 data
+* Priority system: dedicated image socket > embedded images in prompt
+* Support for all major vision models (GPT-4V, Claude-3.5-Sonnet, etc.)
+
+**Web Interface Enhancements**:
+* Files panel with drag & drop upload functionality in frontend
+* Real-time file management (upload, delete, preview, copy links)
+* Integration with Display Panel for image display in chat workflows
+* Automatic CORS handling through static file serving
+
+**Tool Integration Features**:
+* Widget-based parameter control: only prompt exposed to AI, size/quality from widgets
+* Automatic link output instructions in tool results
+* Clear user guidance to display generated image links
+* Proper error handling with descriptive messages
+
+### **5.4. New Utility Nodes and Enhanced Features**
 * **TriggerDetectionNode**: Utility node that outputs which socket triggered its execution (dependency vs do_not_wait).
 * **Enhanced DisplayInputEventNode**: Now includes a `trigger` output socket for workflow control.
 * **Dynamic Socket Configuration**: BaseNode now provides methods (`get_socket_config()`, `configure_socket()`) for runtime socket configuration modification in the `load()` method.

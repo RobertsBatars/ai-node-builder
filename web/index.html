@@ -42,6 +42,8 @@
         #toggle-log-button:hover { background-color: #7b1fa2; }
         #toggle-display-button { background-color: #ff9800; color: white; }
         #toggle-display-button:hover { background-color: #f57c00; }
+        #toggle-files-button { background-color: #607d8b; color: white; }
+        #toggle-files-button:hover { background-color: #455a64; }
 
         .top-button.disabled { background-color: #555; cursor: not-allowed; }
         #status-log { margin-left: 10px; font-style: italic; color: #aaa; }
@@ -174,6 +176,140 @@
             color: #aaa;
             font-style: italic;
         }
+
+        /* Files Panel */
+        #files-panel {
+            right: 0;
+            width: 400px;
+            height: 60%;
+            border-left: 1px solid #444;
+        }
+        body.files-panel-visible #display-panel {
+            right: 400px;
+        }
+        #files-list {
+            padding: 10px;
+        }
+        .file-item {
+            background-color: #3c3c3c;
+            border-radius: 4px;
+            padding: 8px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .file-info {
+            flex-grow: 1;
+        }
+        .file-name {
+            font-weight: bold;
+            color: #4CAF50;
+            word-break: break-all;
+        }
+        .file-meta {
+            font-size: 11px;
+            color: #aaa;
+        }
+        .file-actions {
+            display: flex;
+            gap: 5px;
+        }
+        .file-action-btn {
+            background: #555;
+            border: none;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+        }
+        .file-action-btn:hover { background: #777; }
+        .file-action-btn.copy { background: #2196F3; }
+        .file-action-btn.delete { background: #f44336; }
+        .file-action-btn.preview { background: #4CAF50; }
+        #refresh-files-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+        #refresh-files-btn:hover { background-color: #45a049; }
+
+        /* File Upload Widget */
+        .file-upload-widget {
+            margin: 5px 0;
+            border: 1px solid #555;
+            border-radius: 4px;
+            background: #2a2a2a;
+        }
+        .upload-area {
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px dashed #555;
+            border-radius: 4px;
+            background: #1a1a1a;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .upload-area:hover, .upload-area.drag-hover {
+            border-color: #4CAF50;
+            background: #1e2a1e;
+        }
+        .upload-prompt {
+            text-align: center;
+            color: #aaa;
+            font-size: 12px;
+        }
+        .browse-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-top: 5px;
+        }
+        .browse-btn:hover { background: #45a049; }
+        .upload-result {
+            padding: 8px;
+            background: #2a4a2a;
+            border-top: 1px solid #4CAF50;
+        }
+        .file-info-success {
+            color: #4CAF50;
+            font-size: 11px;
+        }
+        .servable-url {
+            font-family: monospace;
+            background: #1a1a1a;
+            padding: 2px 4px;
+            border-radius: 2px;
+            margin-top: 3px;
+            font-size: 10px;
+            color: #80CBC4;
+        }
+        .upload-error {
+            color: #f44336;
+            font-size: 11px;
+            padding: 8px;
+            background: #4a2a2a;
+            border-top: 1px solid #f44336;
+        }
+        .upload-loading {
+            color: #FFC107;
+            font-size: 11px;
+            padding: 8px;
+            background: #4a4a2a;
+            border-top: 1px solid #FFC107;
+        }
     </style>
 </head>
 <body>
@@ -186,6 +322,7 @@
         <button id="load-button" class="top-button">Load</button>
         <button id="toggle-log-button" class="top-button">Show Logs</button>
         <button id="toggle-display-button" class="top-button">Show Display</button>
+        <button id="toggle-files-button" class="top-button">Show Files</button>
         <div id="status-log">Status: Disconnected</div>
     </div>
 
@@ -223,8 +360,75 @@
         </div>
     </div>
 
+    <div id="files-panel" class="panel">
+        <div class="panel-header">
+            <span>Servable Files</span>
+            <button id="refresh-files-btn">Refresh</button>
+        </div>
+        <div class="panel-content">
+            <!-- Upload Area -->
+            <div id="files-upload-area" class="upload-area" style="margin: 10px; min-height: 80px; border-radius: 6px;">
+                <div class="upload-prompt">
+                    📁 Drag & Drop Images Here<br>
+                    <button class="browse-btn" type="button">or Browse Files</button>
+                </div>
+                <div class="upload-result" style="display:none;">
+                    <div class="file-info-success"></div>
+                    <div class="servable-url"></div>
+                </div>
+                <div class="upload-error" style="display:none;"></div>
+                <div class="upload-loading" style="display:none;"></div>
+            </div>
+            <input type="file" id="files-panel-upload" accept="image/*" multiple style="display:none;">
+            
+            <!-- Files List -->
+            <div id="files-list">
+                <div id="files-loading" style="padding: 20px; text-align: center; color: #aaa;">
+                    Loading files...
+                </div>
+            </div>
+        </div>
+    </div>
+
     <canvas id='main-canvas'></canvas>
     <script>
+        // Global functions for onclick handlers
+        async function deleteFile(filename) {
+            if (!confirm(`Delete ${filename}?`)) return;
+            
+            try {
+                const response = await fetch(`/servable_files/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    if (addLogMessage) addLogMessage(`File deleted: ${filename}`, 'log');
+                    refreshFilesList();
+                } else {
+                    if (addLogMessage) addLogMessage(`Failed to delete file: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                if (addLogMessage) addLogMessage(`Error deleting file: ${error.message}`, 'error');
+            }
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                if (addLogMessage) addLogMessage(`Copied to clipboard: ${text}`, 'log');
+            }).catch(err => {
+                if (addLogMessage) addLogMessage(`Failed to copy: ${err.message}`, 'error');
+            });
+        }
+
+        function previewImage(url) {
+            window.open(url, '_blank');
+        }
+
+        // Global reference to refreshFilesList for onclick handlers
+        let refreshFilesList;
+        let addLogMessage; // Global reference to addLogMessage
+
         (async () => {
             const statusLog = document.getElementById('status-log');
             const runButton = document.getElementById('run-button');
@@ -254,9 +458,16 @@
             const displayInput = document.getElementById('display-input');
             const displaySubmitBtn = document.getElementById('display-submit-btn');
             const displayInputStatus = document.getElementById('display-input-status');
+
+            const toggleFilesButton = document.getElementById('toggle-files-button');
+            const filesPanel = document.getElementById('files-panel');
+            const refreshFilesBtn = document.getElementById('refresh-files-btn');
+            const filesUploadArea = document.getElementById('files-upload-area');
+            const filesPanelUpload = document.getElementById('files-panel-upload');
             
             let logPanelVisible = false;
             let displayPanelVisible = false;
+            let filesPanelVisible = false;
             let localDisplayContext = [];
             // REVERT: All complex hash and warning state variables have been removed.
             let contextGraphHash = null;
@@ -276,7 +487,8 @@
                 }
             };
             
-            const addLogMessage = (message, type = 'engine', nodeInfo = null) => {
+            // Assign to global reference so onclick handlers can access it
+            addLogMessage = (message, type = 'engine', nodeInfo = null) => {
                 const timestamp = new Date().toLocaleTimeString();
                 const logEntry = document.createElement('div');
                 logEntry.className = 'log-message';
@@ -455,6 +667,23 @@
 
             toggleDisplayButton.addEventListener('click', () => toggleDisplayPanel());
             
+            toggleFilesButton.addEventListener('click', () => {
+                filesPanelVisible = !filesPanelVisible;
+                filesPanel.style.display = filesPanelVisible ? 'flex' : 'none';
+                toggleFilesButton.textContent = filesPanelVisible ? 'Hide Files' : 'Show Files';
+                body.classList.toggle('files-panel-visible', filesPanelVisible);
+                if (filesPanelVisible) {
+                    loadFilesList();
+                }
+            });
+            
+            refreshFilesBtn.addEventListener('click', () => {
+                refreshFilesList();
+            });
+            
+            // Setup files panel upload functionality
+            setupFilesPanelUpload();
+            
             clearDisplayBtn.addEventListener('click', () => {
                 localDisplayContext = [];
                 contextGraphHash = null;
@@ -509,6 +738,247 @@
             const resizeCanvas = () => canvas.resize(window.innerWidth, window.innerHeight);
             window.addEventListener('resize', resizeCanvas);
             resizeCanvas();
+
+
+            // Files Panel Functions
+            async function loadFilesList() {
+                const filesList = document.getElementById('files-list');
+                const loading = document.getElementById('files-loading');
+                
+                try {
+                    if (loading) {
+                        loading.style.display = 'block';
+                    }
+                    const response = await fetch('/servable_files');
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        renderFilesList(result.files, result.count, result.total_size);
+                    } else {
+                        filesList.innerHTML = `<div style="padding: 20px; color: #f44336;">Error: ${result.error}</div>`;
+                    }
+                } catch (error) {
+                    filesList.innerHTML = `<div style="padding: 20px; color: #f44336;">Failed to load files: ${error.message}</div>`;
+                } finally {
+                    const loadingFinal = document.getElementById('files-loading');
+                    if (loadingFinal) {
+                        loadingFinal.style.display = 'none';
+                    }
+                }
+            }
+
+            function renderFilesList(files, count, totalSize) {
+                const filesList = document.getElementById('files-list');
+                
+                if (!files || files.length === 0) {
+                    filesList.innerHTML = `
+                        <div id="files-loading" style="padding: 20px; text-align: center; color: #aaa; display: none;">
+                            Loading files...
+                        </div>
+                        <div style="padding: 20px; text-align: center; color: #aaa;">No files uploaded yet</div>
+                    `;
+                    return;
+                }
+                
+                const totalSizeFormatted = formatFileSize(totalSize);
+                let html = `
+                    <div id="files-loading" style="padding: 20px; text-align: center; color: #aaa; display: none;">
+                        Loading files...
+                    </div>
+                    <div style="padding: 10px; border-bottom: 1px solid #444; color: #aaa; font-size: 12px;">${count} files • ${totalSizeFormatted} total</div>
+                `;
+                
+                files.forEach(file => {
+                    const modifiedDate = new Date(file.modified).toLocaleString();
+                    html += `
+                        <div class="file-item">
+                            <div class="file-info">
+                                <div class="file-name">${file.filename}</div>
+                                <div class="file-meta">${file.size_human} • ${modifiedDate}</div>
+                            </div>
+                            <div class="file-actions">
+                                <button class="file-action-btn copy" onclick="copyToClipboard('${file.url}')" title="Copy URL">📋</button>
+                                ${file.is_image ? `<button class="file-action-btn preview" onclick="previewImage('${file.url}')" title="Preview">👁️</button>` : ''}
+                                <button class="file-action-btn delete" onclick="deleteFile('${file.filename}')" title="Delete">🗑️</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                filesList.innerHTML = html;
+            }
+
+            function formatFileSize(bytes) {
+                if (bytes < 1024) return bytes + ' B';
+                if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+                if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+                return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+            }
+
+            // Assign the local refreshFilesList to the global reference
+            refreshFilesList = function() {
+                loadFilesList();
+            };
+
+            // Files Panel Upload Functionality
+            function setupFilesPanelUpload() {
+                const browseBtn = filesUploadArea.querySelector('.browse-btn');
+                
+                // Drag and drop events
+                filesUploadArea.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    filesUploadArea.classList.add('drag-hover');
+                });
+                
+                filesUploadArea.addEventListener('dragleave', (e) => {
+                    // Only remove hover if leaving the upload area entirely
+                    if (!filesUploadArea.contains(e.relatedTarget)) {
+                        filesUploadArea.classList.remove('drag-hover');
+                    }
+                });
+                
+                filesUploadArea.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    filesUploadArea.classList.remove('drag-hover');
+                    const files = Array.from(e.dataTransfer.files);
+                    if (files.length > 0) {
+                        handleMultipleFileUpload(files, filesUploadArea);
+                    }
+                });
+                
+                // Browse button
+                browseBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    filesPanelUpload.click();
+                });
+                
+                filesPanelUpload.addEventListener('change', (e) => {
+                    if (e.target.files.length > 0) {
+                        const files = Array.from(e.target.files);
+                        handleMultipleFileUpload(files, filesUploadArea);
+                        e.target.value = ''; // Reset file input
+                    }
+                });
+            }
+
+            async function handleMultipleFileUpload(files, container) {
+                const uploadResult = container.querySelector('.upload-result');
+                const uploadError = container.querySelector('.upload-error');
+                const uploadLoading = container.querySelector('.upload-loading');
+                
+                // Filter for image files only
+                const imageFiles = files.filter(file => file.type.startsWith('image/'));
+                const rejectedFiles = files.length - imageFiles.length;
+                
+                if (imageFiles.length === 0) {
+                    showPanelUploadError(container, 'No valid image files found. Please select image files.');
+                    return;
+                }
+                
+                if (rejectedFiles > 0) {
+                    addLogMessage(`Rejected ${rejectedFiles} non-image files`, 'log');
+                }
+                
+                // Show loading
+                uploadResult.style.display = 'none';
+                uploadError.style.display = 'none';
+                uploadLoading.style.display = 'block';
+                uploadLoading.textContent = `Uploading ${imageFiles.length} file${imageFiles.length > 1 ? 's' : ''}...`;
+                
+                let successCount = 0;
+                let errorCount = 0;
+                const uploadedUrls = [];
+                
+                // Upload files one by one
+                for (let i = 0; i < imageFiles.length; i++) {
+                    const file = imageFiles[i];
+                    
+                    // Validate file size
+                    if (file.size > 10 * 1024 * 1024) {
+                        addLogMessage(`File ${file.name} too large (>10MB), skipped`, 'error');
+                        errorCount++;
+                        continue;
+                    }
+                    
+                    try {
+                        uploadLoading.textContent = `Uploading ${file.name} (${i + 1}/${imageFiles.length})...`;
+                        
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        formData.append('node_id', 'files_panel');
+                        
+                        const response = await fetch('/upload_image', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            successCount++;
+                            uploadedUrls.push(result.servable_url);
+                            addLogMessage(`Uploaded: ${file.name} (${result.size_human})`, 'log');
+                        } else {
+                            errorCount++;
+                            addLogMessage(`Failed to upload ${file.name}: ${result.error}`, 'error');
+                        }
+                    } catch (error) {
+                        errorCount++;
+                        addLogMessage(`Upload error for ${file.name}: ${error.message}`, 'error');
+                    }
+                }
+                
+                uploadLoading.style.display = 'none';
+                
+                // Show results
+                if (successCount > 0) {
+                    const summary = `✅ ${successCount} file${successCount > 1 ? 's' : ''} uploaded successfully`;
+                    if (errorCount > 0) {
+                        showPanelUploadError(container, `${summary}, ${errorCount} failed`);
+                    } else {
+                        showPanelUploadSuccess(container, summary, uploadedUrls);
+                    }
+                    refreshFilesList();
+                } else {
+                    showPanelUploadError(container, `❌ All uploads failed (${errorCount} errors)`);
+                }
+            }
+
+            function showPanelUploadSuccess(container, message, urls) {
+                const uploadResult = container.querySelector('.upload-result');
+                const uploadError = container.querySelector('.upload-error');
+                
+                uploadError.style.display = 'none';
+                uploadResult.style.display = 'block';
+                uploadResult.querySelector('.file-info-success').textContent = message;
+                
+                // Show first few URLs if multiple files
+                if (urls.length > 0) {
+                    const urlDisplay = urls.length > 3 
+                        ? `${urls.slice(0, 3).join(', ')} + ${urls.length - 3} more`
+                        : urls.join(', ');
+                    uploadResult.querySelector('.servable-url').textContent = urlDisplay;
+                }
+                
+                // Clear after 5 seconds
+                setTimeout(() => {
+                    uploadResult.style.display = 'none';
+                }, 5000);
+            }
+
+            function showPanelUploadError(container, message) {
+                const uploadResult = container.querySelector('.upload-result');
+                const uploadError = container.querySelector('.upload-error');
+                
+                uploadResult.style.display = 'none';
+                uploadError.style.display = 'block';
+                uploadError.textContent = message;
+                
+                // Clear after 5 seconds
+                setTimeout(() => {
+                    uploadError.style.display = 'none';
+                }, 5000);
+            }
 
             let ws;
             function connectWebSocket() {

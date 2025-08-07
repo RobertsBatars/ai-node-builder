@@ -6,16 +6,24 @@ import asyncio
 import uuid
 from datetime import datetime
 from collections import defaultdict
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from core.engine import NodeEngine
 from core.event_manager import EventManager
 from core.definitions import EventNode
+from core.file_utils import ServableFileManager
 
 # Initialize the main FastAPI application and the Node Engine
 app = FastAPI()
 engine = NodeEngine()
+
+# Initialize file manager and create servable directory
+file_manager = ServableFileManager()
+
+# Mount static files for servable directory
+app.mount("/servable", StaticFiles(directory="servable"), name="servable")
 
 # --- Global State Management ---
 GLOBAL_DISPLAY_STATE = {
@@ -45,6 +53,71 @@ async def get_nodes():
     blueprints_json_string = engine.generate_ui_blueprints()
     blueprints_object = json.loads(blueprints_json_string)
     return JSONResponse(content=blueprints_object)
+
+@app.post("/upload_image")
+async def upload_image(file: UploadFile = File(...), node_id: str = Form(default="")):
+    """Handle image uploads from file upload widgets."""
+    try:
+        # Validate file type
+        if not file.content_type or not file.content_type.startswith('image/'):
+            return JSONResponse({"success": False, "error": "Invalid file type. Please upload an image."})
+        
+        # Validate file size (10MB limit)
+        content = await file.read()
+        if len(content) > 10 * 1024 * 1024:
+            return JSONResponse({"success": False, "error": "File size must be less than 10MB."})
+        
+        # Save to servable folder
+        servable_url = file_manager.save_file(content, filename=file.filename, node_id=node_id)
+        
+        return JSONResponse({
+            "success": True,
+            "servable_url": servable_url,
+            "filename": file.filename,
+            "size": len(content),
+            "size_human": file_manager._format_file_size(len(content))
+        })
+        
+    except Exception as e:
+        return JSONResponse({"success": False, "error": f"Upload failed: {str(e)}"})
+
+@app.get("/servable_files")
+async def get_servable_files():
+    """Get list of all servable files with metadata."""
+    try:
+        files = file_manager.list_files()
+        return JSONResponse({
+            "success": True,
+            "files": files,
+            "count": len(files),
+            "total_size": sum(f['size'] for f in files)
+        })
+    except Exception as e:
+        return JSONResponse({"success": False, "error": f"Failed to list files: {str(e)}"})
+
+@app.delete("/servable_files/{filename}")
+async def delete_servable_file(filename: str):
+    """Delete a specific servable file."""
+    try:
+        success = file_manager.delete_file(filename)
+        if success:
+            return JSONResponse({"success": True, "message": f"File {filename} deleted successfully."})
+        else:
+            return JSONResponse({"success": False, "error": f"File {filename} not found."})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": f"Failed to delete file: {str(e)}"})
+
+@app.get("/servable_files/{filename}/info")
+async def get_servable_file_info(filename: str):
+    """Get detailed info for a specific servable file."""
+    try:
+        file_info = file_manager.get_file_info(filename)
+        if file_info:
+            return JSONResponse({"success": True, "file": file_info})
+        else:
+            return JSONResponse({"success": False, "error": f"File {filename} not found."})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": f"Failed to get file info: {str(e)}"})
 
 async def broadcast_to_frontend(message: dict):
     if ACTIVE_WEBSOCKET:

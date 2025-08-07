@@ -826,8 +826,10 @@ This node shows how to:
 The `LLMNode` demonstrates advanced features like:
 - Universal AI model access via litellm
 - Context integration from display panel and runtime memory
-- Multimodal support (text + images)
+- Multimodal support (text + images) with dedicated image socket
 - **Fully implemented and tested** tool calling system with MCP-inspired design
+- Base64 image processing and automatic format detection
+- Support for servable paths, external URLs, and embedded base64 images
 
 ## 12. Creating Tool Nodes for LLM Integration
 
@@ -1069,7 +1071,248 @@ To use your tool nodes with the LLM node:
 
 The LLM node handles all the complex routing, message sequencing, and OpenAI API compatibility automatically. This system has been thoroughly tested with multiple tool types and complex tool calling scenarios.
 
-## 13. Event Communication Nodes
+### Image Generation Tool Node Example
+
+Here's a complete example of the `GPTImageToolNode` that demonstrates advanced tool node patterns with image generation:
+
+```python
+from core.definitions import BaseNode, SocketType, InputWidget, MessageType
+from core.file_utils import ServableFileManager
+import uuid
+import base64
+
+class GPTImageToolNode(BaseNode):
+    """
+    Tool node for generating images using OpenAI's gpt-image-1 model.
+    Demonstrates advanced patterns: async execution, file management,
+    widget-controlled parameters, and comprehensive error handling.
+    """
+    CATEGORY = "Tools"
+    
+    INPUT_SOCKETS = {
+        "tool_call": {"type": SocketType.ANY, "do_not_wait": True}
+    }
+    
+    OUTPUT_SOCKETS = {
+        "output": {"type": SocketType.ANY}
+    }
+    
+    # Configuration widgets (not exposed to AI, used internally)
+    api_key = InputWidget(widget_type="TEXT", default="", description="OpenAI API Key")
+    size = InputWidget(
+        widget_type="COMBO", 
+        default="1024x1024",
+        properties={"values": ["1024x1024", "1024x1536", "1536x1024"]}
+    )
+    quality = InputWidget(
+        widget_type="COMBO",
+        default="high",
+        properties={"values": ["low", "medium", "high", "auto"]}
+    )
+
+    def load(self):
+        if litellm is None:
+            raise ImportError("litellm library is required")
+        self.file_manager = ServableFileManager()
+
+    async def execute(self, tool_call=None):
+        # Tool definition (MCP-compatible) - only expose prompt to AI
+        tool_definition = {
+            "name": "generate_image",
+            "description": "Generate high-quality images using OpenAI's gpt-image-1 model",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "Detailed description of the image to generate"
+                    }
+                },
+                "required": ["prompt"]
+            }
+        }
+        
+        # Return definition if no tool call
+        if tool_call is None:
+            return (tool_definition,)
+        
+        # Process tool call
+        try:
+            if isinstance(tool_call, dict) and 'arguments' in tool_call:
+                args = tool_call['arguments']
+                prompt = str(args.get('prompt', '')).strip()
+                
+                # Use widget values (not exposed to AI)
+                size = str(self.widget_values.get('size', self.size.default))
+                quality = str(self.widget_values.get('quality', self.quality.default))
+                api_key_val = self.widget_values.get('api_key', self.api_key.default)
+                
+                if not prompt:
+                    return ({"id": tool_call.get('id'), "error": "Prompt required"},)
+                
+                if not api_key_val:
+                    return ({"id": tool_call.get('id'), "error": "API key required"},)
+                
+                # Set API key and generate image
+                litellm.openai_key = api_key_val
+                
+                response = await litellm.aimage_generation(
+                    model="gpt-image-1",
+                    prompt=prompt,
+                    size=size,
+                    quality=quality,
+                    n=1
+                )
+                
+                # Process base64 response directly (no URL downloading)
+                first_data_item = response.data[0]
+                if hasattr(first_data_item, 'b64_json') and first_data_item.b64_json:
+                    image_data = base64.b64decode(first_data_item.b64_json)
+                    filename = f"gpt_image_{uuid.uuid4().hex[:8]}.png"
+                    servable_url = self.file_manager.save_file(image_data, filename)
+                    
+                    await self.send_message_to_client(MessageType.LOG,
+                        {"message": f"✅ Image generated: {filename}"})
+                    
+                    # Return structured result with instructions
+                    return ({
+                        "id": tool_call.get('id'),
+                        "result": {
+                            "success": True,
+                            "message": f"Image generated: {servable_url}",
+                            "servable_url": servable_url,
+                            "filename": filename,
+                            "instructions": "Always display the servable_url to the user"
+                        }
+                    },)
+                else:
+                    return ({"id": tool_call.get('id'), "error": "No image data received"},)
+            else:
+                return ({"id": tool_call.get('id'), "error": "Invalid tool call format"},)
+                
+        except Exception as e:
+            return ({"id": tool_call.get('id'), "error": f"Generation error: {str(e)}"},)
+```
+
+This example demonstrates:
+- **Async Tool Execution**: Using `async def execute()` for API calls
+- **File Management**: Using `ServableFileManager` for automatic file serving
+- **Base64 Processing**: Direct base64 handling without URL downloads
+- **Widget-Controlled Parameters**: Size/quality from widgets, not AI input
+- **Client Messaging**: Using `send_message_to_client()` for progress updates
+- **Comprehensive Error Handling**: Structured error responses for all failure modes
+- **Result Instructions**: Guiding AI to display the generated image link
+
+## 13. Image Processing Nodes
+
+The system includes specialized nodes for handling images in AI workflows. These demonstrate advanced patterns for file management, conditional output, and image link processing.
+
+### ImageLinkExtractNode Pattern
+
+This node shows how to create conditional outputs using `SKIP_OUTPUT`:
+
+```python
+from core.definitions import BaseNode, SocketType, InputWidget, SKIP_OUTPUT
+import re
+
+class ImageLinkExtractNode(BaseNode):
+    """
+    Extracts image links from text with conditional output.
+    Demonstrates regex pattern matching and SKIP_OUTPUT usage.
+    """
+    CATEGORY = "Image"
+
+    INPUT_SOCKETS = {
+        "text": {"type": SocketType.TEXT}
+    }
+    
+    OUTPUT_SOCKETS = {
+        "text": {"type": SocketType.TEXT},      # Cleaned text
+        "image_link": {"type": SocketType.TEXT}  # Extracted link
+    }
+    
+    extract_first_only = InputWidget(
+        widget_type="BOOLEAN",
+        default=True,
+        description="Extract only the first image link found"
+    )
+
+    def load(self):
+        """Initialize regex patterns for comprehensive image detection."""
+        self.patterns = [
+            r'!\[([^\]]*)\]\(([^)]+)\)',  # Markdown: ![alt](url)
+            r'<img[^>]+src=["\']([^"\']+)["\'][^>]*>',  # HTML: <img src="url">
+            r'(https?://[^\s]+\.(?:jpg|jpeg|png|gif|webp|bmp|svg)(?:\?[^\s]*)?)',  # URLs
+            r'(/servable/[^\s]+)',  # Servable links
+            r'(data:image/[^;]+;base64,[A-Za-z0-9+/=]+)'  # Base64 data URLs
+        ]
+
+    def execute(self, text):
+        if not text:
+            return (SKIP_OUTPUT, SKIP_OUTPUT)  # Skip both outputs if no text
+
+        extracted_links = []
+        
+        # Search for image links using all patterns
+        for pattern in self.patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for match in matches:
+                # Handle both markdown (2 groups) and direct URL (1 group) patterns
+                link = match.group(2) if len(match.groups()) == 2 else match.group(1)
+                extracted_links.append({
+                    'link': link,
+                    'full_match': match.group(0),
+                    'start': match.start(),
+                    'end': match.end()
+                })
+
+        # No image links found - output only cleaned text
+        if not extracted_links:
+            return (text, SKIP_OUTPUT)
+
+        # Process first link, remove from text
+        first_link = extracted_links[0]
+        cleaned_text = text[:first_link['start']] + text[first_link['end']:]
+        cleaned_text = cleaned_text.strip()
+        
+        # Use SKIP_OUTPUT for empty cleaned text
+        text_output = cleaned_text if cleaned_text else SKIP_OUTPUT
+        image_output = first_link['link']
+        
+        return (text_output, image_output)
+```
+
+### File Management with ServableFileManager
+
+For nodes that need to handle file operations:
+
+```python
+from core.file_utils import ServableFileManager
+import uuid
+
+class MyImageNode(BaseNode):
+    def load(self):
+        self.file_manager = ServableFileManager()
+    
+    async def execute(self, image_data):
+        # Save binary data with automatic filename generation
+        filename = f"processed_{uuid.uuid4().hex[:8]}.png"
+        servable_url = self.file_manager.save_file(image_data, filename)
+        
+        # URL is automatically accessible at http://localhost:8000/servable/filename
+        return (servable_url, filename)
+```
+
+### Key Patterns for Image Processing Nodes
+
+1. **Conditional Output with SKIP_OUTPUT**: Skip outputs when no relevant data is found
+2. **Comprehensive Pattern Matching**: Support multiple image formats (markdown, HTML, URLs, base64)
+3. **File Management Integration**: Use `ServableFileManager` for automatic CORS-friendly file serving
+4. **Base64 Direct Processing**: Handle base64 images directly without URL downloading
+5. **Widget-Controlled Behavior**: Use widgets for parameters not exposed to AI systems
+6. **Progress Messaging**: Use `send_message_to_client()` for user feedback in async operations
+
+## 14. Event Communication Nodes
 
 The system includes specialized nodes for inter-workflow communication, enabling parallel workflow coordination and data exchange:
 
@@ -1125,7 +1368,7 @@ class ReceiveEventNode(EventNode):
 - Include proper error handling and timeout logic for await operations
 - Follow the established pattern: Send → Receive → Process → Return
 
-## 14. Best Practices and Considerations
+## 15. Best Practices and Considerations
 
 - **Keep Nodes Atomic**: Each node should perform a single, clear task. Instead of one giant node that does three things, create three smaller nodes. This makes your workflows more flexible and easier to debug.
 - **Initialize Memory**: When using stateful nodes, it is best practice to initialize all expected keys for `self.memory` in the `load()` method. This prevents potential `KeyError` exceptions and makes the node's expected state clear.

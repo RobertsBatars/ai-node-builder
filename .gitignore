@@ -11,9 +11,11 @@ CLAUDE.md
 GEMINI.md
 QWEN.md
 2025*
+.claude/
 
 # Temporary files
 TMP.txt
+servable/
 
 # Distribution / packaging
 .Python
