@@ -107,7 +107,15 @@ class BaseNode(ABC):
 
     def get_socket_config(self, socket_name):
         """Get configuration for a specific input socket."""
-        return self.INPUT_SOCKETS.get(socket_name, {}).copy()
+        return self.INPUT_SOCKETS.get(socket_name, {})
+    
+    def get_display_context(self):
+        """Get display context with warnings filtered based on frontend preferences."""
+        context = self.global_state.get('display_context', [])
+        if self.global_state.get('filter_warnings', False):
+            # Filter out warnings if frontend filter is enabled
+            context = [msg for msg in context if msg.get('content_type') != 'warning']
+        return context
 
     def get_input_socket_configs(self):
         """Get all input socket configurations."""

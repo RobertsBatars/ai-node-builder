@@ -120,8 +120,8 @@ class DisplayInputEventNode(EventNode):
         Returns the user input and current display context.
         """
         payload = self.memory.get('initial_payload', "")
-        # Get current display context from global state
-        display_context = self.global_state.get('display_context', [])
+        # Get current display context with warnings filtered if needed
+        display_context = self.get_display_context()
         # Empty trigger output for workflow control
         trigger_output = ""
         return (payload, display_context, trigger_output)

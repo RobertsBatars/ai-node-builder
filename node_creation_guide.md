@@ -38,7 +38,7 @@ It is primarily used for the **Display Panel** context. You can read from it to 
 
 ```python
 # Get a (deep) copy of the entire display history
-display_history = copy.deepcopy(self.global_state.get('display_context', []))
+display_history = copy.deepcopy(self.get_display_context())
 
 # Add a new message to the global display context
 # Note: This is typically handled by the DisplayOutputNode.
@@ -744,7 +744,7 @@ The `DisplayInputEventNode` is a special event node that enables chat-like inter
 -   When your event happens, call `trigger_workflow_callback(payload)` to start the workflow.
 -   In your `execute()` method, get the data from `self.memory.get('initial_payload')` and return it on an output socket.
 -   If your listener runs in a separate thread (like the `HTTPServer`), you must use `asyncio.run_coroutine_threadsafe(coro, loop)` to safely call the async callback on the main event loop.
--   For Display Panel integration, use `self.global_state.get('display_context', [])` to access the conversation history.
+-   For Display Panel integration, use `self.get_display_context()` to access the conversation history (automatically filters warnings based on frontend settings).
 
 ---
 

@@ -345,6 +345,7 @@
         <div class="panel-header">
             <span>Display</span>
             <div id="panel-controls">
+                <div class="log-filter-checkbox" style="margin-right: 10px;"><input type="checkbox" id="filter-warnings" checked><label for="filter-warnings">Warnings</label></div>
                 <button id="save-display-btn" class="top-button" style="background-color:#008CBA;">Save</button>
                 <button id="load-display-btn" class="top-button">Load</button>
                 <button id="clear-display-btn" class="top-button">Clear</button>
@@ -458,6 +459,7 @@
             const displayInput = document.getElementById('display-input');
             const displaySubmitBtn = document.getElementById('display-submit-btn');
             const displayInputStatus = document.getElementById('display-input-status');
+            const filterWarnings = document.getElementById('filter-warnings');
 
             const toggleFilesButton = document.getElementById('toggle-files-button');
             const filesPanel = document.getElementById('files-panel');
@@ -472,7 +474,9 @@
             // REVERT: All complex hash and warning state variables have been removed.
             let contextGraphHash = null;
             let eventListening = false;
-            let hasDisplayInputEventNode = false; 
+            let hasDisplayInputEventNode = false;
+            let activeWorkflowCount = 0;
+            let showWarnings = true; 
 
             const log = (message) => {
                 console.log(message);
@@ -542,11 +546,22 @@
             filterDebug.addEventListener('change', applyLogFilters);
             filterTest.addEventListener('change', applyLogFilters);
             filterError.addEventListener('change', applyLogFilters);
+            
+            filterWarnings.addEventListener('change', () => {
+                showWarnings = filterWarnings.checked;
+                console.log(`Warning filter changed: ${showWarnings ? 'enabled' : 'disabled'}`);
+                redrawAllDisplayMessages();
+            });
 
             const setWorkflowRunningState = (isRunning) => {
                 runButton.disabled = isRunning;
                 runButton.classList.toggle('disabled', isRunning);
                 stopButton.style.display = isRunning ? 'inline-block' : 'none';
+            };
+
+            const updateWorkflowRunningState = () => {
+                const anyWorkflowRunning = activeWorkflowCount > 0;
+                setWorkflowRunningState(anyWorkflowRunning);
             };
 
             const setListeningState = (isListening) => {
@@ -606,6 +621,12 @@
             });
 
             const renderDisplayMessage = (msg, forceRender = false) => {
+                // Skip warnings if filter is disabled
+                if (msg.content_type === 'warning' && !showWarnings) {
+                    console.log("Skipping warning message due to filter:", msg);
+                    return;
+                }
+                
                 // Ensure display messages container exists
                 if (!displayMessages) {
                     console.warn("Display messages container not ready, queuing message:", msg);
@@ -705,10 +726,11 @@
                 localDisplayContext.push(userMessage);
                 renderDisplayMessage(userMessage);
                 
-                // Send to backend
+                // Send to backend with filter preference
                 sendWsMessage({ 
                     action: 'display_input',
-                    input: inputText
+                    input: inputText,
+                    filter_warnings: !showWarnings  // Tell backend whether to exclude warnings
                 });
                 
                 // Clear input
@@ -1024,8 +1046,15 @@
                                 addLogMessage(message, 'engine', nodeInfo);
                                 log(message);
 
-                                if (run_id === 'frontend_run' && (message.includes("Workflow finished") || message.includes("Workflow stopped"))) {
-                                    setWorkflowRunningState(false);
+                                // Track workflow starts and stops for any run_id
+                                if (message.includes("Initializing workflow")) {
+                                    activeWorkflowCount++;
+                                    console.log(`Workflow started (${run_id}). Active count: ${activeWorkflowCount}`);
+                                    updateWorkflowRunningState();
+                                } else if (message.includes("Workflow finished") || message.includes("Workflow stopped")) {
+                                    activeWorkflowCount = Math.max(0, activeWorkflowCount - 1);
+                                    console.log(`Workflow ended (${run_id}). Active count: ${activeWorkflowCount}`);
+                                    updateWorkflowRunningState();
                                 }
                                 break;
                             }
@@ -1056,12 +1085,14 @@
                 
                 ws.onclose = () => {
                     log("Disconnected from backend");
+                    activeWorkflowCount = 0;
                     setWorkflowRunningState(false);
                     setListeningState(false);
                 };
 
                 ws.onerror = () => {
                     log("Connection error");
+                    activeWorkflowCount = 0;
                     setWorkflowRunningState(false);
                     setListeningState(false);
                 };
@@ -1168,7 +1199,6 @@
                 const start_node_id = selected_ids[0];
                 if (ws.readyState === WebSocket.OPEN) {
                     log("Sending graph to backend...");
-                    setWorkflowRunningState(true);
                     ws.send(JSON.stringify({ action: "run", graph: graph.serialize(), start_node_id: start_node_id }));
                 } else {
                     log("Cannot run. WebSocket is not connected.");

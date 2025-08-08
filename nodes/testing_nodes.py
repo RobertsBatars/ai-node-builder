@@ -78,7 +78,7 @@ class TestDisplayFeatureNode(BaseNode):
         await self.send_message_to_client(MessageType.DISPLAY, display_payload)
         
         # 2. Retrieve context and verify the message was added
-        retrieved_context = self.global_state['display_context']
+        retrieved_context = self.get_display_context()
         found = any(msg.get('data') == test_message and msg.get('node_id') == my_id for msg in retrieved_context)
         
         if found:

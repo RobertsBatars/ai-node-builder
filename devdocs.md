@@ -177,6 +177,8 @@ To provide a more persistent, chat-like interface for workflows, a global "Displ
 
 *   **State Management**: The server provides WebSocket actions to `get_initial_context`, `load_display_context` from a file, and `clear_display_context`. Clearing the context also resets the `initial_graph_hash` and the warning flags, allowing a new session to begin.
 
+*   **Warning Filter & Display Context Access**: The Display Panel includes a warning filter toggle. When enabled, warnings are filtered from display context accessed by nodes via `self.get_display_context()`. Warning logic was moved from engine to user action handlers (RUN/Listen buttons) to prevent spam from parallel workflows.
+
 ## **4. Node Implementation and Framework (Successful Components)**
 
 ### **4.1. The BaseNode and EventNode Abstract Classes**

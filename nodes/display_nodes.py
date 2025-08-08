@@ -62,7 +62,7 @@ class GetDisplayContextNode(BaseNode):
     def execute(self):
         should_filter = self.widget_values.get('filter_by_node_id', self.filter_by_node_id.default)
         # Always work with a deep copy to prevent circular references in the workflow.
-        full_context = copy.deepcopy(self.global_state['display_context'])
+        full_context = copy.deepcopy(self.get_display_context())
         
         if should_filter:
             my_node_id = self.node_info.get('id')

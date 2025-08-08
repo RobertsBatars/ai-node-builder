@@ -30,9 +30,18 @@ GLOBAL_DISPLAY_STATE = {
     "display_context": [],
     "graph_hash": None,
     "initial_graph_hash": None,
-    "previous_graph_hash": None
+    "previous_graph_hash": None,
+    "filter_warnings": False  # Frontend filter preference
 }
 ACTIVE_WEBSOCKET = None
+
+def get_filtered_display_context():
+    """Returns display context filtered based on current frontend filter preferences."""
+    context = GLOBAL_DISPLAY_STATE.get('display_context', [])
+    if GLOBAL_DISPLAY_STATE.get('filter_warnings', False):
+        # Filter out warnings if frontend filter is enabled
+        context = [msg for msg in context if msg.get('content_type') != 'warning']
+    return context
 
 # {run_id: asyncio.Task} - Keeps track of all running workflow tasks globally.
 active_workflows = {} 
@@ -129,6 +138,37 @@ async def broadcast_to_frontend(message: dict):
 # Set the callback on the engine instance
 engine.set_broadcast_callback(broadcast_to_frontend)
 
+async def check_and_warn_workflow_change(global_state, current_hash):
+    """Check if workflow has changed since context was started and add warning if needed."""
+    is_context_populated = bool(global_state.get("display_context"))
+    initial_hash = global_state.get("initial_graph_hash")
+    
+    # Set the initial hash when the context first becomes populated
+    # We store the hash from the PREVIOUS run, not the current one
+    if is_context_populated and not initial_hash:
+        # Check if we have a previous hash stored
+        previous_hash = global_state.get("previous_graph_hash")
+        if previous_hash:
+            global_state['initial_graph_hash'] = previous_hash
+            initial_hash = previous_hash
+    
+    # If the context is populated and we have an initial hash, compare it with current hash
+    if is_context_populated and initial_hash and current_hash != initial_hash:
+        warning_msg = {
+            "node_id": None,
+            "node_title": "Engine Warning",
+            "content_type": "warning",
+            "data": "Workflow has changed since the context was started. Node filtering may be unreliable."
+        }
+        global_state['display_context'].append(warning_msg)
+        await broadcast_to_frontend({
+            "source": "node",
+            "type": "display",
+            "payload": {"data": warning_msg}
+        })
+        return True
+    return False
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -196,6 +236,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text(json.dumps({"type": "error", "message": "No start node selected."}))
                     continue
 
+                # Check for workflow changes and warn user if needed
+                current_hash = engine._generate_graph_hash(graph_data)
+                await check_and_warn_workflow_change(GLOBAL_DISPLAY_STATE, current_hash)
+
                 event_manager = event_managers[websocket]
                 task = asyncio.create_task(engine.run_workflow(graph_data, str(start_node_id), websocket, run_id, GLOBAL_DISPLAY_STATE, event_manager=event_manager))
                 active_workflows[run_id] = task
@@ -217,6 +261,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 if not graph_data:
                     await websocket.send_text(json.dumps({"type": "error", "message": "Graph data is required to start listening."}))
                     continue
+                
+                # Check for workflow changes and warn user if needed
+                current_hash = engine._generate_graph_hash(graph_data)
+                await check_and_warn_workflow_change(GLOBAL_DISPLAY_STATE, current_hash)
                 
                 # Instantiate all nodes to find the event nodes
                 manager = event_managers[websocket]
@@ -243,8 +291,12 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif action == "display_input":
                 user_input = data.get("input", "")
+                filter_warnings = data.get("filter_warnings", False)
                 if not user_input.strip():
                     continue
+                
+                # Update global filter preference
+                GLOBAL_DISPLAY_STATE['filter_warnings'] = filter_warnings
                 
                 # Add user message to global display context
                 user_message_entry = {
@@ -272,7 +324,11 @@ async def websocket_endpoint(websocket: WebSocket):
                             break
                     
                     if display_input_node and display_input_node.trigger_callback:
-                        await display_input_node.trigger_callback(user_input)
+                        # Pass user input to the triggered workflow (simplified payload)
+                        payload_data = {
+                            "user_input": user_input
+                        }
+                        await display_input_node.trigger_callback(payload_data)
                     else:
                         await websocket.send_text(json.dumps({"type": "engine_log", "run_id": "display_input", "message": "No active DisplayInputEventNode found or event listening is not enabled."}))
                 else:

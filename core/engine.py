@@ -77,36 +77,8 @@ class NodeEngine:
         current_hash = self._generate_graph_hash(graph_data)
         global_state["graph_hash"] = current_hash
 
-        # --- Workflow Change Warning Logic ---
-        is_context_populated = bool(global_state.get("display_context"))
-        initial_hash = global_state.get("initial_graph_hash")
-
-        # Set the initial hash when the context first becomes populated
-        # We store the hash from the PREVIOUS run, not the current one
-        if is_context_populated and not initial_hash:
-            # Check if we have a previous hash stored
-            previous_hash = global_state.get("previous_graph_hash")
-            if previous_hash:
-                global_state['initial_graph_hash'] = previous_hash
-                initial_hash = previous_hash
-        
-        # Store current hash as previous for next run
+        # Store current hash as previous for next run (used by user action warning logic)
         global_state["previous_graph_hash"] = current_hash
-        
-        # If the context is populated and we have an initial hash, compare it with current hash
-        if is_context_populated and initial_hash and current_hash != initial_hash:
-            warning_msg = {
-                "node_id": None,
-                "node_title": "Engine Warning",
-                "content_type": "warning",
-                "data": "Workflow has changed since the context was started. Node filtering may be unreliable."
-            }
-            global_state['display_context'].append(warning_msg)
-            await self.broadcast({
-                "source": "node",
-                "type": "display",
-                "payload": {"data": warning_msg}
-            })
         
         node_id_to_name = {
             str(node['id']): node.get('title', node['type'].split('/')[-1]) 

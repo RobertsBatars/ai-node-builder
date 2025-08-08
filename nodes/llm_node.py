@@ -156,7 +156,7 @@ class LLMNode(BaseNode):
                 # Add display context first (historical conversation)
                 if use_display_val:
                     # RAW DUMP: Show entire display context before processing
-                    raw_context = self.global_state.get('display_context', [])
+                    raw_context = self.get_display_context()
                     await self.send_message_to_client(MessageType.DEBUG, {"message": f"🔍 RAW DISPLAY CONTEXT DUMP ({len(raw_context)} entries):"})
                     for i, entry in enumerate(raw_context):
                         raw_dump = json.dumps(entry, indent=2)
@@ -472,7 +472,7 @@ class LLMNode(BaseNode):
 
     async def _get_display_context_messages(self, filter_mode: str, current_prompt: str = None) -> List[Dict[str, Any]]:
         """Extract and convert display context to chat messages."""
-        display_context = self.global_state.get('display_context', [])
+        display_context = self.get_display_context()
         messages = []
         
         self_node_id = self.node_info.get('id')
