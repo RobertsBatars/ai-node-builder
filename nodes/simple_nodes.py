@@ -76,17 +76,61 @@ class ConcatenateArrayNode(BaseNode):
 
 # --- OUTPUT NODE ---
 
-class DisplayNode(BaseNode):
+class LogNode(BaseNode):
     CATEGORY = "Output"
-    # This is a standard "push" input.
-    INPUT_SOCKETS = {"value_in": {"type": SocketType.ANY}}
+    # This is a dependency input that pulls data from connected nodes.
+    INPUT_SOCKETS = {"value_in": {"type": SocketType.ANY, "is_dependency": True}}
+    # Output socket to pass through the input data
+    OUTPUT_SOCKETS = {"value_out": {"type": SocketType.ANY}}
+    
+    # Combo widget to select message type
+    message_type = InputWidget(
+        widget_type="COMBO", 
+        default="LOG", 
+        properties={"values": ["LOG", "DEBUG", "TEST_EVENT", "ERROR", "DISPLAY"]}
+    )
 
     def load(self):
         pass
 
-    def execute(self, value_in=None):
-        print(f"--- DISPLAY NODE RECEIVED: {value_in} ---")
-        return ()
+    async def execute(self, value_in=None):
+        from core.definitions import MessageType
+        
+        # Get the selected message type from the widget
+        msg_type = self.widget_values.get('message_type', self.message_type.default)
+        
+        # Map string to MessageType enum
+        message_type_map = {
+            "LOG": MessageType.LOG,
+            "DEBUG": MessageType.DEBUG,
+            "TEST_EVENT": MessageType.TEST_EVENT,
+            "ERROR": MessageType.ERROR,
+            "DISPLAY": MessageType.DISPLAY
+        }
+        
+        selected_type = message_type_map.get(msg_type, MessageType.LOG)
+        
+        # Prepare data dictionary based on message type
+        if selected_type == MessageType.DISPLAY:
+            # Special structure for DISPLAY messages
+            data_dict = {
+                "node_title": self.node_info.get('title', self.__class__.__name__),
+                "content_type": "text",
+                "data": str(value_in)
+            }
+        else:
+            # Standard structure for other message types
+            data_dict = {
+                "message": str(value_in),
+                "node_id": self.node_info.get('id', 'unknown'),
+                "timestamp": __import__('time').time()
+            }
+        
+        # Send message to client using the proper method
+        await self.send_message_to_client(selected_type, data_dict)
+        
+        # Pass through the input value to the output
+        return (value_in,)
 
 class WidgetTestNode(BaseNode):
     CATEGORY = "Test"

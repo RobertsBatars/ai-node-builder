@@ -1,6 +1,8 @@
 # nodes/tool_nodes.py
 import json
 import random
+import asyncio
+import aiohttp
 from typing import Dict, Any
 from core.definitions import BaseNode, SocketType, InputWidget
 
@@ -103,8 +105,8 @@ class CalculatorToolNode(BaseNode):
 
 class WeatherToolNode(BaseNode):
     """
-    A mock weather lookup tool node that mimics an MCP server.
-    Returns simulated weather data for testing LLM tool calling.
+    A weather lookup tool node that fetches real weather data from OpenWeatherMap API.
+    Requires an API key to be configured.
     """
     CATEGORY = "Tools"
     
@@ -115,20 +117,61 @@ class WeatherToolNode(BaseNode):
     OUTPUT_SOCKETS = {
         "output": {"type": SocketType.ANY}
     }
+    
+    # Widget for API key configuration
+    openweathermap_api_key = InputWidget(
+        widget_type="TEXT", 
+        default="", 
+        properties={"placeholder": "Enter OpenWeatherMap API key"}
+    )
 
     def load(self):
         """Initialize the tool node."""
-        # Mock weather data for different cities
-        self.weather_data = {
-            "london": {"temp": 15, "condition": "Cloudy", "humidity": 78},
-            "paris": {"temp": 18, "condition": "Partly cloudy", "humidity": 65},
-            "tokyo": {"temp": 22, "condition": "Sunny", "humidity": 60},
-            "new york": {"temp": 12, "condition": "Rainy", "humidity": 85},
-            "sydney": {"temp": 25, "condition": "Sunny", "humidity": 55},
-            "berlin": {"temp": 10, "condition": "Overcast", "humidity": 80}
-        }
+        self.base_url = "http://api.openweathermap.org/data/2.5/weather"
 
-    def execute(self, tool_call=None):
+    async def fetch_weather_data(self, city: str, api_key: str) -> Dict[str, Any]:
+        """
+        Fetch real weather data from OpenWeatherMap API.
+        """
+        params = {
+            "q": city,
+            "appid": api_key,
+            "units": "metric"  # Use Celsius
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.base_url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return {
+                            "success": True,
+                            "data": {
+                                "city": data["name"],
+                                "country": data["sys"]["country"],
+                                "temperature": round(data["main"]["temp"], 1),
+                                "feels_like": round(data["main"]["feels_like"], 1),
+                                "condition": data["weather"][0]["description"].title(),
+                                "humidity": data["main"]["humidity"],
+                                "pressure": data["main"]["pressure"],
+                                "wind_speed": data.get("wind", {}).get("speed", 0),
+                                "visibility": data.get("visibility", 0) / 1000,  # Convert to km
+                                "unit": "Celsius"
+                            }
+                        }
+                    elif response.status == 401:
+                        return {"success": False, "error": "Invalid API key"}
+                    elif response.status == 404:
+                        return {"success": False, "error": f"City '{city}' not found"}
+                    else:
+                        return {"success": False, "error": f"API request failed with status {response.status}"}
+                        
+        except aiohttp.ClientError as e:
+            return {"success": False, "error": f"Network error: {str(e)}"}
+        except Exception as e:
+            return {"success": False, "error": f"Unexpected error: {str(e)}"}
+
+    async def execute(self, tool_call=None):
         """
         Execute the weather tool.
         If tool_call is None, return the tool definition.
@@ -137,13 +180,13 @@ class WeatherToolNode(BaseNode):
         # Define the tool schema (MCP-compatible)
         tool_definition = {
             "name": "get_weather",
-            "description": "Get current weather information for a city",
+            "description": "Get current weather information for a city using OpenWeatherMap API",
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "city": {
                         "type": "string",
-                        "description": "The name of the city to get weather for"
+                        "description": "The name of the city to get weather for (e.g., 'London', 'New York', 'Tokyo')"
                     }
                 },
                 "required": ["city"]
@@ -154,27 +197,36 @@ class WeatherToolNode(BaseNode):
         if tool_call is None:
             return (tool_definition,)
         
+        # Get API key from widget
+        api_key = self.widget_values.get('openweathermap_api_key', self.openweathermap_api_key.default).strip()
+        
+        if not api_key:
+            error_result = {
+                "id": tool_call.get('id', 'weather_error'),
+                "error": "OpenWeatherMap API key not configured. Please set the API key in the node widget. Get a free key from https://openweathermap.org/api"
+            }
+            return (error_result,)
+        
         # Process the tool call
         try:
             if isinstance(tool_call, dict) and 'arguments' in tool_call:
                 args = tool_call['arguments']
-                city = args.get('city', '').lower().strip()
+                city = args.get('city', '').strip()
                 
-                if city in self.weather_data:
-                    weather = self.weather_data[city]
-                    # Add some randomness to make it more realistic
-                    temp_variation = random.randint(-3, 3)
-                    result = {
-                        "city": city.title(),
-                        "temperature": weather["temp"] + temp_variation,
-                        "condition": weather["condition"],
-                        "humidity": weather["humidity"] + random.randint(-5, 5),
-                        "unit": "Celsius"
+                if not city:
+                    error_result = {
+                        "id": tool_call.get('id', 'weather_error'),
+                        "error": "City name is required"
                     }
+                    return (error_result,)
+                
+                # Fetch real weather data
+                weather_response = await self.fetch_weather_data(city, api_key)
+                
+                if weather_response["success"]:
+                    result = weather_response["data"]
                 else:
-                    result = {
-                        "error": f"Weather data not available for {city}. Available cities: London, Paris, Tokyo, New York, Sydney, Berlin"
-                    }
+                    result = {"error": weather_response["error"]}
                 
                 tool_result = {
                     "id": tool_call.get('id', 'weather_result'),

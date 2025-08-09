@@ -120,11 +120,19 @@ class DisplayInputEventNode(EventNode):
         Returns the user input and current display context.
         """
         payload = self.memory.get('initial_payload', "")
+        
+        # Extract the actual user input from the payload if it's a dictionary
+        if isinstance(payload, dict) and 'user_input' in payload:
+            user_input = payload['user_input']
+        else:
+            # Fallback to the payload itself if it's not the expected dictionary format
+            user_input = payload
+        
         # Get current display context with warnings filtered if needed
         display_context = self.get_display_context()
         # Empty trigger output for workflow control
         trigger_output = ""
-        return (payload, display_context, trigger_output)
+        return (user_input, display_context, trigger_output)
 
 
 class WebhookRequestHandler(BaseHTTPRequestHandler):

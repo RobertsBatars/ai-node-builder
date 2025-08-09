@@ -141,7 +141,7 @@ To move beyond a single, user-initiated workflow, an event-driven architecture w
 To enable real-time user interaction with workflows, a chat-like interface was implemented in the Display Panel. This feature allows users to send text input directly to running workflows through a special event node.
 
 *   **The `DisplayInputEventNode`**: A new event node (`nodes/event_nodes.py`) that listens for user input from the Display Panel chat interface. Unlike other event nodes that listen to external sources (like HTTP requests), this node is triggered by frontend user interactions.
-    *   The node provides two outputs: `user_input` (the text entered by the user) and `display_context` (the current display panel context for maintaining conversation history).
+    *   The node provides three outputs: `user_input` (the text entered by the user), `display_context` (the current display panel context for maintaining conversation history), and `trigger` (for workflow control).
     *   It integrates seamlessly with the existing `EventNode` architecture and `EventManager` system.
 
 *   **Frontend Chat Interface**: The Display Panel (`web/index.html`) was enhanced with:

@@ -8,7 +8,10 @@ class DisplayOutputNode(BaseNode):
     A node to send data to the frontend display panel and save it to the global context.
     """
     CATEGORY = "Output"
-    INPUT_SOCKETS = {"data": {"type": SocketType.ANY}}
+    # This is a dependency input that pulls data from connected nodes.
+    INPUT_SOCKETS = {"data": {"type": SocketType.ANY, "is_dependency": True}}
+    # Output socket to pass through the input data
+    OUTPUT_SOCKETS = {"data_out": {"type": SocketType.ANY}}
     
     content_type = InputWidget(widget_type="COMBO", default="text", properties={"values": ["text", "image", "video"]})
 
@@ -45,7 +48,8 @@ class DisplayOutputNode(BaseNode):
         # 3. Send the message to the client for immediate display
         await self.send_message_to_client(MessageType.DISPLAY, display_payload)
         
-        return ()
+        # Pass through the input value to the output
+        return (data,)
 
 class GetDisplayContextNode(BaseNode):
     """

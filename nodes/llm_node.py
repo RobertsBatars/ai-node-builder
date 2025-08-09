@@ -481,7 +481,7 @@ class LLMNode(BaseNode):
         
         # Find the most recent user message that matches current prompt (if any)
         most_recent_duplicate_index = -1
-        if current_prompt:
+        if current_prompt:            
             for i in reversed(range(len(display_context))):
                 entry = display_context[i]
                 node_title = entry.get('node_title', '')
@@ -528,7 +528,7 @@ class LLMNode(BaseNode):
         Priority: dedicated image socket > embedded base64 in prompt
         Supports servable URLs, external URLs, and base64 data URLs.
         """
-        await self.send_message_to_client(MessageType.DEBUG, {"message": f"🖼️ _process_multimodal_input called with: prompt='{prompt}', image='{image}', model='{model}'"})
+        await self.send_message_to_client(MessageType.DEBUG, {"message": f"🖼️ _process_multimodal_input called with: prompt='{str(prompt)}', image='{image}', model='{model}'"})
         
         # Vision-capable models
         vision_models = [
@@ -570,7 +570,7 @@ class LLMNode(BaseNode):
         # Priority 2: Check for embedded image links in prompt (fallback)
         else:
             await self.send_message_to_client(MessageType.DEBUG, {"message": "🖼️ No dedicated image, checking for embedded images in prompt"})
-            extracted_url, cleaned_prompt = self._extract_image_from_prompt(prompt)
+            extracted_url, cleaned_prompt = self._extract_image_from_prompt(str(prompt))
             if extracted_url:
                 image_url = extracted_url
                 prompt = cleaned_prompt  # Use the cleaned prompt without image syntax
@@ -579,7 +579,7 @@ class LLMNode(BaseNode):
         # Create multimodal message if we have an image
         if image_url:
             content = [
-                {"type": "text", "text": prompt if prompt.strip() else "Analyze this image:"},
+                {"type": "text", "text": str(prompt).strip() if str(prompt).strip() else "Analyze this image:"},
                 {"type": "image_url", "image_url": {"url": image_url}}
             ]
             await self.send_message_to_client(MessageType.DEBUG, {"message": f"🖼️ Created multimodal message with image URL: '{image_url}'"})
@@ -587,7 +587,7 @@ class LLMNode(BaseNode):
         
         # Text-only fallback
         await self.send_message_to_client(MessageType.DEBUG, {"message": "🖼️ No image found, returning text-only message"})
-        return {"role": "user", "content": prompt}
+        return {"role": "user", "content": str(prompt)}
 
     def _extract_image_from_prompt(self, prompt: str):
         """
@@ -671,7 +671,7 @@ class LLMNode(BaseNode):
         # Create array to hold tool calls for each tool (matching array size)
         processed_calls = [None] * len(tool_definitions) if tool_definitions else []
         
-        for tool_call in tool_calls:
+        for i, tool_call in enumerate(tool_calls):
             try:
                 
                 # Extract data with explicit error handling
