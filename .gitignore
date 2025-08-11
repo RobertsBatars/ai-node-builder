@@ -17,6 +17,9 @@ QWEN.md
 TMP.txt
 servable/
 
+# User settings
+settings.json
+
 # Distribution / packaging
 .Python
 build/

@@ -19,6 +19,25 @@ from core.file_utils import ServableFileManager
 app = FastAPI()
 engine = NodeEngine()
 
+# Load default settings from file
+def load_default_settings():
+    """Load default settings from default_settings.json"""
+    import os
+    default_file = "default_settings.json"
+    
+    if not os.path.exists(default_file):
+        raise FileNotFoundError(f"Required file '{default_file}' not found. Please create this file with default settings.")
+    
+    try:
+        with open(default_file, 'r') as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON in '{default_file}': {e}")
+    except Exception as e:
+        raise RuntimeError(f"Could not load '{default_file}': {e}")
+
+DEFAULT_SETTINGS = load_default_settings()
+
 # Initialize file manager and create servable directory
 file_manager = ServableFileManager()
 
@@ -127,6 +146,59 @@ async def get_servable_file_info(filename: str):
             return JSONResponse({"success": False, "error": f"File {filename} not found."})
     except Exception as e:
         return JSONResponse({"success": False, "error": f"Failed to get file info: {str(e)}"})
+
+@app.get("/settings")
+async def get_settings():
+    """Get application settings."""
+    try:
+        import os
+        settings_file = "settings.json"
+        if os.path.exists(settings_file):
+            with open(settings_file, 'r') as f:
+                settings = json.load(f)
+        else:
+            # Use default settings
+            settings = DEFAULT_SETTINGS.copy()
+        return JSONResponse({"success": True, "settings": settings})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": f"Failed to load settings: {str(e)}"})
+
+@app.post("/settings")
+async def update_settings(settings_data: dict):
+    """Update application settings."""
+    try:
+        import os
+        settings_file = "settings.json"
+        
+        # Load existing settings or create default
+        if os.path.exists(settings_file):
+            with open(settings_file, 'r') as f:
+                current_settings = json.load(f)
+        else:
+            current_settings = DEFAULT_SETTINGS.copy()
+        
+        # Deep merge the new settings
+        def deep_merge(target, source):
+            for key, value in source.items():
+                if key in target and isinstance(target[key], dict) and isinstance(value, dict):
+                    deep_merge(target[key], value)
+                else:
+                    target[key] = value
+        
+        deep_merge(current_settings, settings_data)
+        
+        # Save updated settings
+        with open(settings_file, 'w') as f:
+            json.dump(current_settings, f, indent=2)
+        
+        return JSONResponse({"success": True, "settings": current_settings})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": f"Failed to save settings: {str(e)}"})
+
+@app.get("/settings/defaults")
+async def get_default_settings():
+    """Get default application settings."""
+    return JSONResponse({"success": True, "defaults": DEFAULT_SETTINGS})
 
 async def broadcast_to_frontend(message: dict):
     if ACTIVE_WEBSOCKET:

@@ -44,6 +44,8 @@
         #toggle-display-button:hover { background-color: #f57c00; }
         #toggle-files-button { background-color: #607d8b; color: white; }
         #toggle-files-button:hover { background-color: #455a64; }
+        #toggle-settings-button { background-color: #795548; color: white; }
+        #toggle-settings-button:hover { background-color: #5d4037; }
 
         .top-button.disabled { background-color: #555; cursor: not-allowed; }
         #status-log { margin-left: 10px; font-style: italic; color: #aaa; }
@@ -187,6 +189,12 @@
         body.files-panel-visible #display-panel {
             right: 400px;
         }
+        body.settings-panel-visible.files-panel-visible #files-panel {
+            right: 400px;
+        }
+        body.settings-panel-visible.files-panel-visible #display-panel {
+            right: 800px;
+        }
         #files-list {
             padding: 10px;
         }
@@ -310,6 +318,61 @@
             background: #4a4a2a;
             border-top: 1px solid #FFC107;
         }
+
+        /* Settings Panel */
+        #settings-panel {
+            right: 0;
+            width: 400px;
+            height: 70%;
+            border-left: 1px solid #444;
+        }
+        body.settings-panel-visible #display-panel {
+            right: 400px;
+        }
+        body.settings-panel-visible #files-panel {
+            right: 400px;
+        }
+        
+        .settings-section {
+            margin-bottom: 25px;
+            border-bottom: 1px solid #444;
+            padding-bottom: 20px;
+        }
+        .settings-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        
+        .setting-item {
+            margin-bottom: 15px;
+        }
+        .setting-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 5px;
+        }
+        .setting-checkbox input[type="checkbox"] {
+            transform: scale(1.2);
+        }
+        .setting-checkbox label {
+            font-weight: bold;
+            color: #eee;
+            cursor: pointer;
+        }
+        .setting-description {
+            font-size: 11px;
+            color: #aaa;
+            margin-left: 24px;
+            line-height: 1.4;
+        }
+        #settings-controls {
+            display: flex;
+            gap: 5px;
+        }
+        #settings-controls > .top-button {
+            margin-bottom: 0;
+        }
     </style>
 </head>
 <body>
@@ -323,6 +386,7 @@
         <button id="toggle-log-button" class="top-button">Show Logs</button>
         <button id="toggle-display-button" class="top-button">Show Display</button>
         <button id="toggle-files-button" class="top-button">Show Files</button>
+        <button id="toggle-settings-button" class="top-button">Settings</button>
         <div id="status-log">Status: Disconnected</div>
     </div>
 
@@ -386,6 +450,45 @@
             <div id="files-list">
                 <div id="files-loading" style="padding: 20px; text-align: center; color: #aaa;">
                     Loading files...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="settings-panel" class="panel">
+        <div class="panel-header">
+            <span>Settings</span>
+            <div id="settings-controls">
+                <button id="save-settings-btn" class="top-button" style="background-color:#4CAF50;">Save</button>
+                <button id="reset-settings-btn" class="top-button" style="background-color:#f44336;">Reset</button>
+            </div>
+        </div>
+        <div class="panel-content">
+            <div id="settings-content" style="padding: 15px;">
+                <div class="settings-section">
+                    <h3 style="color: #4CAF50; margin-top: 0; margin-bottom: 15px; font-size: 14px;">Node Visibility</h3>
+                    <div class="setting-item">
+                        <div class="setting-checkbox">
+                            <input type="checkbox" id="setting-show-test-nodes">
+                            <label for="setting-show-test-nodes">Show Test Category Nodes</label>
+                        </div>
+                        <div class="setting-description">Display nodes in the Test category in the node browser. Changes apply immediately.</div>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3 style="color: #4CAF50; margin-bottom: 15px; font-size: 14px;">Display Panel</h3>
+                    <div class="setting-item">
+                        <div class="setting-checkbox">
+                            <input type="checkbox" id="setting-show-warnings">
+                            <label for="setting-show-warnings">Show Warning Messages</label>
+                        </div>
+                        <div class="setting-description">Display warning messages in the display panel. Synchronized with the display panel filter.</div>
+                    </div>
+                </div>
+                
+                <div id="settings-status" style="margin-top: 20px; padding: 10px; background: #3c3c3c; border-radius: 4px; font-size: 12px; color: #aaa;">
+                    Settings are saved to settings.json. Default values are defined in default_settings.json.
                 </div>
             </div>
         </div>
@@ -466,10 +569,19 @@
             const refreshFilesBtn = document.getElementById('refresh-files-btn');
             const filesUploadArea = document.getElementById('files-upload-area');
             const filesPanelUpload = document.getElementById('files-panel-upload');
+
+            const toggleSettingsButton = document.getElementById('toggle-settings-button');
+            const settingsPanel = document.getElementById('settings-panel');
+            const saveSettingsBtn = document.getElementById('save-settings-btn');
+            const resetSettingsBtn = document.getElementById('reset-settings-btn');
+            const settingShowTestNodes = document.getElementById('setting-show-test-nodes');
+            const settingShowWarnings = document.getElementById('setting-show-warnings');
+            const settingsStatus = document.getElementById('settings-status');
             
             let logPanelVisible = false;
             let displayPanelVisible = false;
             let filesPanelVisible = false;
+            let settingsPanelVisible = false;
             let localDisplayContext = [];
             // REVERT: All complex hash and warning state variables have been removed.
             let contextGraphHash = null;
@@ -477,10 +589,187 @@
             let hasDisplayInputEventNode = false;
             let activeWorkflowCount = 0;
             let showWarnings = true; 
+            let appSettings = {
+                ui: {
+                    showTestNodes: false,
+                    showWarnings: true
+                }
+            };
 
             const log = (message) => {
                 console.log(message);
                 statusLog.textContent = `Status: ${message}`;
+            };
+
+            // Settings management functions
+            const loadSettings = async () => {
+                try {
+                    const response = await fetch('/settings');
+                    const result = await response.json();
+                    if (result.success) {
+                        appSettings = result.settings;
+                        updateSettingsUI();
+                        return true;
+                    } else {
+                        console.warn('Failed to load settings:', result.error);
+                        return false;
+                    }
+                } catch (error) {
+                    console.error('Error loading settings:', error);
+                    return false;
+                }
+            };
+
+            const saveSettings = async () => {
+                try {
+                    const response = await fetch('/settings', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(appSettings)
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        settingsStatus.innerHTML = '<span style="color: #4CAF50;">✓ Settings saved successfully</span>';
+                        setTimeout(() => {
+                            settingsStatus.innerHTML = 'Settings are automatically saved to settings.json';
+                        }, 3000);
+                        return true;
+                    } else {
+                        settingsStatus.innerHTML = `<span style="color: #f44336;">✗ Failed to save: ${result.error}</span>`;
+                        return false;
+                    }
+                } catch (error) {
+                    settingsStatus.innerHTML = `<span style="color: #f44336;">✗ Error: ${error.message}</span>`;
+                    return false;
+                }
+            };
+
+            const updateSettingsUI = () => {
+                settingShowTestNodes.checked = appSettings.ui.showTestNodes;
+                settingShowWarnings.checked = appSettings.ui.showWarnings;
+                showWarnings = appSettings.ui.showWarnings;
+                filterWarnings.checked = showWarnings;
+            };
+
+            const reloadNodes = async () => {
+                try {
+                    log("Reloading node definitions...");
+                    LiteGraph.clearRegisteredTypes();
+                    const response = await fetch('/get_nodes');
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const nodeBlueprints = await response.json();
+
+                    nodeBlueprints.forEach(blueprint => {
+                        // Filter out Test category nodes if setting is disabled
+                        if (blueprint.category === 'Test' && !appSettings.ui.showTestNodes) {
+                            return; // Skip this node
+                        }
+
+                        function DynamicNode() {
+                            const that = this;
+                            this.serialize_widgets = true;
+                            this.properties = this.properties || {};
+                            blueprint.widgets.forEach(widgetDef => {
+                                const { name, type, default: defaultValue, properties: widgetProps } = widgetDef;
+                                if (that.properties[name] === undefined) that.properties[name] = defaultValue;
+                                const options = { ...widgetProps, property: name };
+                                let liteGraphWidgetType = type.toLowerCase();
+                                if (type.toUpperCase() === "BOOLEAN") liteGraphWidgetType = "toggle";
+                                if (type.toUpperCase() === "COMBO") {
+                                    that.addWidget("combo", name, that.properties[name], value => that.properties[name] = value, { values: options.values || [] });
+                                } else {
+                                    that.addWidget(liteGraphWidgetType, name, that.properties[name], null, options);
+                                }
+                            });
+                            blueprint.inputs.forEach(input => !input.array && that.addInput(input.name, input.type));
+                            blueprint.outputs.forEach(output => !output.array && that.addOutput(output.name, output.type));
+                            const findLastSlot = (basename, type) => {
+                                const slots = (type === 'input' ? that.inputs : that.outputs) || [];
+                                return slots.filter(s => s.name.startsWith(basename + '_'))
+                                    .map(s => ({ ...s, index: (type === 'input' ? that.inputs : that.outputs).indexOf(s) }))
+                                    .sort((a, b) => parseInt(a.name.split('_').pop()) - parseInt(b.name.split('_').pop()))
+                                    .pop();
+                            };
+                            const updateDynamicWidgets = () => {
+                                that.widgets = (that.widgets || []).filter(w => !w.isDynamicButton);
+                                const createButton = (name, callback) => {
+                                    const button = that.addWidget("button", name, "", callback);
+                                    button.isDynamicButton = true;
+                                };
+                                blueprint.inputs.filter(i => i.array).forEach(inputDef => {
+                                    createButton(`+ ${inputDef.name}`, () => addDynamicSlot(inputDef.name, inputDef.type, 'input'));
+                                    if (findLastSlot(inputDef.name, 'input')) {
+                                        createButton(`- ${inputDef.name}`, () => removeDynamicSlot(inputDef.name, 'input'));
+                                    }
+                                });
+                                blueprint.outputs.filter(o => o.array).forEach(outputDef => {
+                                    createButton(`+ ${outputDef.name}`, () => addDynamicSlot(outputDef.name, outputDef.type, 'output'));
+                                    if (findLastSlot(outputDef.name, 'output')) {
+                                        createButton(`- ${outputDef.name}`, () => removeDynamicSlot(outputDef.name, 'output'));
+                                    }
+                                });
+                                that.setDirtyCanvas(true, true);
+                            };
+                            const addDynamicSlot = (basename, type, slotType) => {
+                                const collection = slotType === 'input' ? that.inputs : that.outputs;
+                                const existingSlots = collection ? collection.filter(s => s.name.startsWith(basename + "_")) : [];
+                                const existingIndices = new Set(existingSlots.map(s => parseInt(s.name.split('_').pop())));
+                                let newIndex = 0;
+                                while (existingIndices.has(newIndex)) newIndex++;
+                                const newName = `${basename}_${newIndex}`;
+                                if (slotType === 'input') that.addInput(newName, type);
+                                else that.addOutput(newName, type);
+                                updateDynamicWidgets();
+                            };
+                            const removeDynamicSlot = (basename, slotType) => {
+                                const lastSlot = findLastSlot(basename, slotType);
+                                if (lastSlot) {
+                                    if (slotType === 'input') that.removeInput(lastSlot.index);
+                                    else that.removeOutput(lastSlot.index);
+                                    updateDynamicWidgets();
+                                }
+                            };
+                            
+                            this.onAdded = function() { setTimeout(() => updateDynamicWidgets(), 10); };
+                            this.onConnectionsChange = function() { setTimeout(() => updateDynamicWidgets(), 10); };
+                        }
+
+                        DynamicNode.title = blueprint.name;
+                        DynamicNode.category = blueprint.category;
+                        LiteGraph.registerNodeType(`${blueprint.category}/${blueprint.name}`, DynamicNode);
+                    });
+                    log("Nodes reloaded successfully!");
+                } catch (error) {
+                    log("Error reloading node definitions.");
+                    console.error("Reload Error:", error);
+                }
+            };
+
+            const resetSettings = async () => {
+                if (confirm('Reset all settings to defaults?')) {
+                    try {
+                        // Get default settings from backend
+                        const response = await fetch('/settings/defaults');
+                        const result = await response.json();
+                        if (result.success) {
+                            appSettings = result.defaults;
+                            updateSettingsUI();
+                            await saveSettings();
+                            await reloadNodes(); // Reload nodes instead of page
+                            redrawAllDisplayMessages(); // Refresh display messages
+                            settingsStatus.innerHTML = '<span style="color: #4CAF50;">✓ Settings reset to defaults</span>';
+                            setTimeout(() => {
+                                settingsStatus.innerHTML = 'Settings are automatically saved to settings.json';
+                            }, 3000);
+                        } else {
+                            settingsStatus.innerHTML = `<span style="color: #f44336;">✗ Failed to get defaults: ${result.error}</span>`;
+                        }
+                    } catch (error) {
+                        settingsStatus.innerHTML = `<span style="color: #f44336;">✗ Error: ${error.message}</span>`;
+                    }
+                }
             };
 
             const sendWsMessage = (message) => {
@@ -704,6 +993,56 @@
             
             // Setup files panel upload functionality
             setupFilesPanelUpload();
+
+            // Settings panel event listeners
+            toggleSettingsButton.addEventListener('click', () => {
+                settingsPanelVisible = !settingsPanelVisible;
+                settingsPanel.style.display = settingsPanelVisible ? 'flex' : 'none';
+                toggleSettingsButton.textContent = settingsPanelVisible ? 'Hide Settings' : 'Settings';
+                body.classList.toggle('settings-panel-visible', settingsPanelVisible);
+                if (settingsPanelVisible && !appSettings.ui) {
+                    loadSettings();
+                }
+            });
+
+            saveSettingsBtn.addEventListener('click', async () => {
+                await saveSettings();
+            });
+
+            resetSettingsBtn.addEventListener('click', async () => {
+                await resetSettings();
+            });
+
+            settingShowTestNodes.addEventListener('change', async () => {
+                appSettings.ui.showTestNodes = settingShowTestNodes.checked;
+                await saveSettings();
+                await reloadNodes(); // Immediately reload nodes
+            });
+
+            settingShowWarnings.addEventListener('change', async () => {
+                appSettings.ui.showWarnings = settingShowWarnings.checked;
+                showWarnings = settingShowWarnings.checked;
+                filterWarnings.checked = showWarnings; // Sync with display panel
+                await saveSettings();
+                redrawAllDisplayMessages(); // Refresh display immediately
+            });
+
+            // Sync warnings setting when changed from display panel
+            filterWarnings.addEventListener('change', async () => {
+                showWarnings = filterWarnings.checked;
+                appSettings.ui.showWarnings = showWarnings;
+                settingShowWarnings.checked = showWarnings; // Sync with settings panel
+                await saveSettings();
+                redrawAllDisplayMessages();
+            });
+
+            settingShowWarnings.addEventListener('change', async () => {
+                appSettings.ui.showWarnings = settingShowWarnings.checked;
+                showWarnings = settingShowWarnings.checked;
+                filterWarnings.checked = showWarnings;
+                await saveSettings();
+                redrawAllDisplayMessages(); // Apply warning filter immediately
+            });
             
             clearDisplayBtn.addEventListener('click', () => {
                 localDisplayContext = [];
@@ -1099,6 +1438,10 @@
             }
             connectWebSocket();
 
+            // Load settings before loading nodes
+            log("Loading settings...");
+            await loadSettings();
+
             log("Fetching node definitions...");
             try {
                 LiteGraph.clearRegisteredTypes();
@@ -1107,6 +1450,11 @@
                 const nodeBlueprints = await response.json();
 
                 nodeBlueprints.forEach(blueprint => {
+                    // Filter out Test category nodes if setting is disabled
+                    if (blueprint.category === 'Test' && !appSettings.ui.showTestNodes) {
+                        return; // Skip this node
+                    }
+
                     function DynamicNode() {
                         const that = this;
                         this.serialize_widgets = true;

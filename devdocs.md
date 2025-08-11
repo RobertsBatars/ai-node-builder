@@ -466,3 +466,39 @@ This system enables:
 - **Conditional Dependencies**: Enable/disable dependency pulling based on workflow requirements
 
 The implementation provides a foundation for creating highly configurable nodes that adapt their socket behavior to different workflow contexts, enhancing the overall flexibility and power of the node-based system.
+
+## **9. Settings and Configuration Management**
+
+A persistent settings system was implemented to manage application-wide configuration options, particularly for UI behavior and node visibility.
+
+### **9.1. Architecture**
+
+The settings system uses a dual-file approach for clarity and maintainability:
+
+*   **`default_settings.json`**: Version-controlled default values that define the baseline configuration
+*   **`settings.json`**: User-specific overrides (gitignored) that persist customizations
+
+### **9.2. Implementation**
+
+**Backend (`core/server.py`)**:
+*   Settings endpoints: `GET /settings`, `POST /settings`, `GET /settings/defaults`
+*   Deep merge functionality for partial setting updates
+*   Strict validation requiring `default_settings.json` to exist (no fallback values)
+
+**Frontend (`web/index.html`)**:
+*   Settings panel with immediate effect changes (no page reload required)
+*   Two-way synchronization between settings panel and other UI elements
+*   Automatic persistence of all setting changes
+
+### **9.3. Current Settings**
+
+*   **`ui.showTestNodes`**: Controls visibility of Test category nodes in the node browser
+*   **`ui.showWarnings`**: Controls display of warning messages, synchronized with display panel filter
+
+### **9.4. Key Features**
+
+*   **Real-time updates**: Changes apply immediately without requiring page refresh
+*   **Persistent storage**: Settings survive browser sessions and application restarts
+*   **Synchronization**: Settings changes in one UI location automatically update others
+*   **Extensible**: Easy to add new settings without architectural changes
+*   **Fail-safe**: Server fails explicitly if default settings file is missing
