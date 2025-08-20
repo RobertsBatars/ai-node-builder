@@ -164,6 +164,7 @@ class StringArrayCreatorNode(BaseNode):
     - wait_toggle: If false, inputs use do_not_wait behavior
     - dependency_toggle: If false, inputs don't use dependency behavior  
     - single_item_passthrough: If true and only one item, output single item instead of array
+    - accumulate: If true, accumulates all inputs; if false, only uses the latest input
     """
     CATEGORY = "Utility"
     
@@ -178,13 +179,14 @@ class StringArrayCreatorNode(BaseNode):
     wait_toggle = InputWidget(widget_type="BOOLEAN", default=True)
     dependency_toggle = InputWidget(widget_type="BOOLEAN", default=True) 
     single_item_passthrough = InputWidget(widget_type="BOOLEAN", default=True)
+    accumulate = InputWidget(widget_type="BOOLEAN", default=False)
 
     def load(self):
         # Get widget values for socket configuration
         should_wait = self.widget_values.get('wait_toggle', self.wait_toggle.default)
         use_dependency = self.widget_values.get('dependency_toggle', self.dependency_toggle.default)
         
-        # Start with base socket configuration - completely rebuild it
+        # Start with base socket configuration - completely rebuild it from scratch
         socket_config = {"type": SocketType.ANY, "array": True}
         
         # Apply do_not_wait if wait_toggle is False
@@ -195,6 +197,8 @@ class StringArrayCreatorNode(BaseNode):
         # (do_not_wait takes priority over is_dependency per engine logic)
         if use_dependency and should_wait:
             socket_config["is_dependency"] = True
+        # Note: If use_dependency is False OR should_wait is False, we deliberately 
+        # don't set is_dependency, effectively removing it from the original definition
         
         # Completely replace the socket configuration to clear any previous flags
         self.INPUT_SOCKETS["inputs"] = socket_config
@@ -203,7 +207,11 @@ class StringArrayCreatorNode(BaseNode):
 
     def execute(self, inputs):
         """
-        Flattens all inputs into a single array.
+        Processes inputs into a single array.
+        
+        With accumulate=True: Flattens all inputs into a single array
+        With accumulate=False: Only uses the latest/newest input, ignoring accumulated data
+        
         If input[i] is already an array: extend result with input[i] contents
         If input[i] is single value: append input[i] to result
         
@@ -212,17 +220,28 @@ class StringArrayCreatorNode(BaseNode):
         if not inputs:
             return ([],)
         
+        # Get widget settings
+        should_accumulate = self.widget_values.get('accumulate', self.accumulate.default)
+        single_passthrough = self.widget_values.get('single_item_passthrough', self.single_item_passthrough.default)
+        
+        # Determine which inputs to process
+        if should_accumulate:
+            # Use all inputs (original behavior)
+            inputs_to_process = inputs
+            print(f"StringArrayCreatorNode: Accumulating all {len(inputs)} inputs")
+        else:
+            # Only use the latest input (non-accumulating behavior)
+            inputs_to_process = [inputs[-1]] if inputs else []
+            print(f"StringArrayCreatorNode: Using only latest input (non-accumulating mode)")
+        
         result = []
-        for item in inputs:
+        for item in inputs_to_process:
             if isinstance(item, (list, tuple)):
                 # If item is already an array, extend the result
                 result.extend(item)
             else:
                 # Single value, append to result
                 result.append(item)
-        
-        # Check single item passthrough setting
-        single_passthrough = self.widget_values.get('single_item_passthrough', self.single_item_passthrough.default)
         
         # If single_item_passthrough is enabled and we have exactly one item, output it directly
         if single_passthrough and len(result) == 1:

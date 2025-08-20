@@ -40,7 +40,7 @@ To solve this, the engine was fundamentally rewritten to use a **state-machine m
 
 *   **Why a State Machine?** A state machine provides a clear and robust framework for managing the lifecycle of each node during a workflow run. It eliminates ambiguity and race conditions by ensuring that nodes transition through well-defined states (`PENDING`, `WAITING`, `EXECUTING`, `DONE`). This was a more resilient alternative to complex locking mechanisms or trying to manage a tangle of interdependent `asyncio` tasks without a central state tracker.
 
-*   **Smart Dependency Caching**: The engine now implements intelligent caching for re-triggered nodes. When a node with `do_not_wait` inputs gets re-triggered, dependency inputs remain cached to avoid unnecessary re-computation, while push inputs are cleared as expected. This optimization significantly improves performance in looping and event-driven workflows.
+*   **Smart Dependency Caching with "do_wait" Override System**: The engine now implements intelligent caching for re-triggered nodes. When a node with `do_not_wait` inputs gets re-triggered, dependency inputs remain cached to avoid unnecessary re-computation, while push inputs are cleared as expected. Additionally, nodes can use `NodeStateUpdate` to specify `do_wait_inputs` - a list of dependency inputs that should be forced to wait for fresh data even when cached values exist. This override system enables sophisticated looping patterns where some dependencies should be cached while others need fresh inputs on each iteration.
 
 *   **The `run_context` Object**: A central `run_context` dictionary is now created for each workflow. It acts as the "single source of truth," tracking:
     *   The state of every node.

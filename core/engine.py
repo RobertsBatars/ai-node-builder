@@ -136,7 +136,8 @@ class NodeEngine:
             "outputs_cache": {}, "active_tasks": set(),
             "source_map": {}, "target_map": defaultdict(list),
             "node_memory": node_memory,
-            "node_wait_configs": defaultdict(list)
+            "node_wait_configs": defaultdict(list),
+            "node_do_wait_configs": defaultdict(list)
         }
         for link_data in graph_data['links']:
             _, source_id, source_slot, target_id, target_slot, _ = link_data
@@ -166,6 +167,7 @@ class NodeEngine:
                     
                     # Use the (potentially dynamic) wait config for the reset
                     wait_config = run_context["node_wait_configs"][node_id]
+                    do_wait_config = run_context["node_do_wait_configs"][node_id]
                     
                     # Only wait for inputs that aren't already cached from the same run
                     cache = run_context["input_cache"][node_id]
@@ -175,11 +177,24 @@ class NodeEngine:
                     waiting_for = []
                     
                     for input_name in wait_config:
-                        socket_def = input_sockets.get(input_name, {})
+                        # Resolve the socket definition, including for dynamic array sockets
+                        socket_def = input_sockets.get(input_name)
+                        if not socket_def:
+                            base_name, _, index = input_name.rpartition('_')
+                            if base_name and index.isdigit():
+                                array_socket_def = input_sockets.get(base_name)
+                                if array_socket_def and array_socket_def.get('array', False):
+                                    socket_def = array_socket_def
+                        if not socket_def:
+                            socket_def = {}
                         is_dependency = socket_def.get("is_dependency", False)
                         
+                        # Check if this input has a "do_wait" override
+                        force_wait = input_name in do_wait_config
+                        
                         # If it's a dependency and cached from the same run, don't wait for it
-                        if is_dependency and input_name in cache and cache_run_ids.get(input_name) == current_run_id:
+                        # UNLESS it has a "do_wait" override
+                        if is_dependency and input_name in cache and cache_run_ids.get(input_name) == current_run_id and not force_wait:
                             continue
                         else:
                             waiting_for.append(input_name)
@@ -188,13 +203,25 @@ class NodeEngine:
 
                     # Clear only non-dependency inputs that the node is now waiting for.
                     # Also clear dependencies from different runs.
+                    # IMPORTANT: Also clear dependencies that have "do_wait" overrides.
                     keys_to_delete = []
                     for key in cache:
                         if key in wait_config:
-                            socket_def = input_sockets.get(key, {})
+                            # Resolve the socket definition, including for dynamic array sockets
+                            socket_def = input_sockets.get(key)
+                            if not socket_def:
+                                base_name, _, index = key.rpartition('_')
+                                if base_name and index.isdigit():
+                                    array_socket_def = input_sockets.get(base_name)
+                                    if array_socket_def and array_socket_def.get('array', False):
+                                        socket_def = array_socket_def
+                            if not socket_def:
+                                socket_def = {}
                             is_dependency = socket_def.get("is_dependency", False)
-                            # Clear non-dependencies or dependencies from different runs
-                            if not is_dependency or cache_run_ids.get(key) != current_run_id:
+                            force_wait = key in do_wait_config
+                            
+                            # Clear non-dependencies, dependencies from different runs, OR dependencies with "do_wait" override
+                            if not is_dependency or cache_run_ids.get(key) != current_run_id or force_wait:
                                 keys_to_delete.append(key)
                     
                     for key in keys_to_delete:
@@ -318,6 +345,9 @@ class NodeEngine:
                         if state_update.wait_for_inputs is not None:
                             run_context["node_wait_configs"][node_id] = state_update.wait_for_inputs
                             print(f"LOG: Node {node_id} ({node_name}) updated its wait config to: {state_update.wait_for_inputs}")
+                        if state_update.do_wait_inputs:
+                            run_context["node_do_wait_configs"][node_id] = state_update.do_wait_inputs
+                            print(f"LOG: Node {node_id} ({node_name}) updated its do_wait config to: {state_update.do_wait_inputs}")
 
                     run_context["node_states"][node_id] = "DONE"
                     run_context["outputs_cache"][node_id] = node_outputs

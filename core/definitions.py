@@ -49,14 +49,18 @@ class NodeStateUpdate:
     A data container used by nodes to request changes to their own state for subsequent executions.
     This is the mechanism for creating dynamic behavior, such as loops.
     """
-    def __init__(self, wait_for_inputs=None):
+    def __init__(self, wait_for_inputs=None, do_wait_inputs=None):
         """
         Args:
             wait_for_inputs (list[str], optional): A list of input socket names that the node
                                                    should wait for in the next execution cycle.
                                                    If None, the wait configuration is not changed.
+            do_wait_inputs (list[str], optional): A list of input socket names that should be
+                                                  explicitly waited for, even if they are cached
+                                                  dependencies. This overrides dependency caching.
         """
         self.wait_for_inputs = wait_for_inputs
+        self.do_wait_inputs = do_wait_inputs if do_wait_inputs is not None else []
 
 
 class BaseNode(ABC):

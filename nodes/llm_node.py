@@ -424,8 +424,8 @@ class LLMNode(BaseNode):
                 for index in called_tool_indices:
                     wait_for_inputs.append(f'tools_{index}')
                 
-                state_update = NodeStateUpdate(wait_for_inputs=wait_for_inputs)
-                await self.send_message_to_client(MessageType.LOG, {"message": f"🔄 Updated node to wait for called tools: {wait_for_inputs}"})
+                state_update = NodeStateUpdate(wait_for_inputs=wait_for_inputs, do_wait_inputs=wait_for_inputs)
+                await self.send_message_to_client(MessageType.LOG, {"message": f"🔄 Updated node to wait for called tools: {wait_for_inputs} (with do_wait override)"})
                 
                 # Filter out None values to prevent unnecessary tool executions
                 filtered_tool_outputs = []

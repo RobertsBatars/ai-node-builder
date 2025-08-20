@@ -489,11 +489,12 @@ class LoopingAccumulatorNode(BaseNode):
 
 ### Enhanced StringArrayCreatorNode Example
 
-The `StringArrayCreatorNode` demonstrates the load-time configuration pattern with three widget controls:
+The `StringArrayCreatorNode` demonstrates the load-time configuration pattern with four widget controls:
 
 - **wait_toggle**: Controls whether to wait for inputs (`do_not_wait` behavior)
-- **dependency_toggle**: Controls dependency pulling behavior
+- **dependency_toggle**: Controls dependency pulling behavior  
 - **single_item_passthrough**: When true, outputs single items directly instead of arrays
+- **accumulate**: When false (default), uses only latest input; when true, accumulates all inputs
 
 ### Key Principles for Dynamic Socket Configuration
 
@@ -501,6 +502,23 @@ The `StringArrayCreatorNode` demonstrates the load-time configuration pattern wi
 2. **Load-Time vs Runtime**: Use load-time configuration for static behavior, runtime updates for loops and state changes
 3. **Complete Replacement**: Use `self.INPUT_SOCKETS["name"] = new_config` to fully replace socket configuration and avoid flag pollution
 4. **Widget Integration**: Use `self.widget_values.get()` with defaults for consistent behavior
+
+### Advanced: The "do_wait" Override System
+
+For sophisticated dependency management in loops, nodes can use the `do_wait_inputs` parameter in `NodeStateUpdate` to force specific dependency inputs to wait for fresh data even when cached values exist:
+
+```python
+# Force fresh data for specific dependencies while keeping others cached
+return (
+    (output_value,),
+    NodeStateUpdate(do_wait_inputs=["dependency_input_name"])
+)
+```
+
+This override system is particularly useful in complex looping scenarios where:
+- Some dependencies should remain cached for performance (e.g., static tool definitions)
+- Other dependencies need fresh data on each iteration (e.g., dynamic user input)
+- You want fine-grained control over the caching behavior without changing socket definitions
 
 ### When to Use Each Method
 
