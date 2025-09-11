@@ -1,6 +1,6 @@
 # nodes/simple_nodes.py
 # Updated nodes to use the new socket definition format.
-from core.definitions import BaseNode, SocketType, InputWidget
+from core.definitions import BaseNode, SocketType, InputWidget, MessageType
 
 # --- INPUT NODES ---
 
@@ -68,12 +68,16 @@ class ConcatenateArrayNode(BaseNode):
         """
         pass
 
-    def execute(self, texts):
+    async def execute(self, texts):
         separator_value = self.get_widget_value_safe('separator', str)
         # 'texts' will be a list of strings
         if isinstance(separator_value, str):
             result = separator_value.join(texts)
         else:
+            await self.send_message_to_client(
+                MessageType.ERROR,
+                {"message": f"Separator widget returned non-string value: {type(separator_value).__name__} = {repr(separator_value)}. Using default ', ' separator."}
+            )
             result = ', '.join(texts)  # fallback
         return (result,)
 

@@ -402,11 +402,13 @@ class NodeEngine:
                                 for target_key in run_context["target_map"].get(source_key, []):
                                     target_node_id, target_slot_str = target_key.split(':')
                                     target_node_data = next((n for n in graph_data['nodes'] if str(n['id']) == target_node_id), None)
-                                    if target_node_data is not None:
-                                        target_input_info = target_node_data['inputs'][int(target_slot_str)]
-                                        target_input_name = target_input_info['name']
-                                        push_data = {"target_input_name": target_input_name, "value": item}
-                                        pushes_by_node[target_node_id].append(push_data)
+                                    if target_node_data is None:
+                                        await send_engine_log(f"ERROR: Invalid connection - Target node '{target_node_id}' not found in graph. Array connection from {source_node_id}:{physical_slot_index} -> {target_node_id}:{target_slot_str}")
+                                        continue  # Skip this invalid connection but continue processing others
+                                    target_input_info = target_node_data['inputs'][int(target_slot_str)]
+                                    target_input_name = target_input_info['name']
+                                    push_data = {"target_input_name": target_input_name, "value": item}
+                                    pushes_by_node[target_node_id].append(push_data)
                             
                             # Move to the next physical slot for the next item in the array
                             physical_slot_index += 1
@@ -418,11 +420,13 @@ class NodeEngine:
                             for target_key in run_context["target_map"].get(source_key, []):
                                 target_node_id, target_slot_str = target_key.split(':')
                                 target_node_data = next((n for n in graph_data['nodes'] if str(n['id']) == target_node_id), None)
-                                if target_node_data is not None:
-                                    target_input_info = target_node_data['inputs'][int(target_slot_str)]
-                                    target_input_name = target_input_info['name']
-                                    push_data = {"target_input_name": target_input_name, "value": value}
-                                    pushes_by_node[target_node_id].append(push_data)
+                                if target_node_data is None:
+                                    await send_engine_log(f"ERROR: Invalid connection - Target node '{target_node_id}' not found in graph. Connection from {source_node_id}:{physical_slot_index} -> {target_node_id}:{target_slot_str}")
+                                    continue  # Skip this invalid connection but continue processing others
+                                target_input_info = target_node_data['inputs'][int(target_slot_str)]
+                                target_input_name = target_input_info['name']
+                                push_data = {"target_input_name": target_input_name, "value": value}
+                                pushes_by_node[target_node_id].append(push_data)
                         
                         # Move to the next physical slot for the next standard output
                         physical_slot_index += 1
