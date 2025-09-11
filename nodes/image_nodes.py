@@ -73,7 +73,7 @@ class GPTImageNode(BaseNode):
                 return ("", "", "")
             
             # Set OpenAI API key
-            litellm.openai_key = api_key_val
+            litellm.openai_key = api_key_val  # type: ignore
             
             await self.send_message_to_client(MessageType.LOG, 
                 {"message": f"🎨 Generating image with gpt-image-1 ({size_val}, {quality_val})"})
@@ -81,7 +81,7 @@ class GPTImageNode(BaseNode):
                 {"message": f"📝 Prompt: {prompt[:100]}{'...' if len(prompt) > 100 else ''}"})
             
             # Call gpt-image-1 via litellm
-            response = await litellm.aimage_generation(
+            response = await litellm.aimage_generation(  # type: ignore
                 model="gpt-image-1",
                 prompt=prompt,
                 size=size_val,
@@ -91,7 +91,10 @@ class GPTImageNode(BaseNode):
             )
             
             # Extract image data from response (gpt-image-1 returns base64 directly)
-            first_data_item = response.data[0]
+            if response.data and len(response.data) > 0:
+                first_data_item = response.data[0]
+            else:
+                raise ValueError("No image data returned from API")
             
             if hasattr(first_data_item, 'b64_json') and first_data_item.b64_json:
                 # Decode base64 to bytes
@@ -209,12 +212,12 @@ class GPTImageToolNode(BaseNode):
                     return (error_result,)
                 
                 # Set OpenAI API key
-                litellm.openai_key = api_key_val
+                litellm.openai_key = api_key_val  # type: ignore
                 
                 await self.send_message_to_client(MessageType.LOG, 
                     {"message": f"🎨 Tool generating image with gpt-image-1 ({size}, {quality})"})
                 # Call gpt-image-1 via litellm
-                response = await litellm.aimage_generation(
+                response = await litellm.aimage_generation(  # type: ignore
                     model="gpt-image-1",
                     prompt=prompt,
                     size=size,
@@ -224,7 +227,10 @@ class GPTImageToolNode(BaseNode):
                 )
                 
                 # Extract image data from response (gpt-image-1 returns base64 directly)
-                first_data_item = response.data[0]
+                if response.data and len(response.data) > 0:
+                    first_data_item = response.data[0]
+                else:
+                    raise ValueError("No image data returned from API")
                 
                 if hasattr(first_data_item, 'b64_json') and first_data_item.b64_json:
                     # Decode base64 to bytes

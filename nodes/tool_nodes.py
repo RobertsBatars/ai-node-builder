@@ -198,7 +198,7 @@ class WeatherToolNode(BaseNode):
             return (tool_definition,)
         
         # Get API key from widget
-        api_key = self.widget_values.get('openweathermap_api_key', self.openweathermap_api_key.default).strip()
+        api_key = self.get_widget_value_safe('openweathermap_api_key', str).strip()
         
         if not api_key:
             error_result = {

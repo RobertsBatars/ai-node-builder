@@ -3,6 +3,7 @@
 
 from abc import ABC, abstractmethod
 from enum import Enum
+from typing import Any
 import inspect
 import json
 
@@ -129,6 +130,30 @@ class BaseNode(ABC):
         """Dynamically update socket configuration during load()."""
         if socket_name in self.INPUT_SOCKETS:
             self.INPUT_SOCKETS[socket_name].update(properties)
+
+    def get_widget_value_safe(self, widget_name: str, expected_type: type | None = None) -> Any:
+        """Get widget value with widget's own default, handling type safety."""
+        # First try to get user-provided value
+        value = self.widget_values.get(widget_name)
+        if value is not None and value != "":
+            return value
+            
+        # Get the widget definition from the class to get its default
+        widget_attr = getattr(self.__class__, widget_name, None)
+        if widget_attr and hasattr(widget_attr, 'default'):
+            return widget_attr.default
+            
+        # Final fallback defaults by type if provided
+        if expected_type == str:
+            return ""
+        elif expected_type == int:
+            return 0
+        elif expected_type == float:
+            return 0.0
+        elif expected_type == bool:
+            return False
+        else:
+            return None
 
     @abstractmethod
     def load(self):

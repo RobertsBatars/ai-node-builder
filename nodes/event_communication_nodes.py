@@ -176,7 +176,7 @@ class AwaitEventNode(BaseNode):
         if timeout is not None:
             timeout_val = float(timeout)
         else:
-            timeout_val = float(self.widget_values.get('timeout_seconds', self.timeout_seconds.default))
+            timeout_val = self.get_widget_value_safe('timeout_seconds', float)
         
         # Prepare data
         if data is None:

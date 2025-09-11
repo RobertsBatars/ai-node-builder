@@ -96,7 +96,8 @@ async def upload_image(file: UploadFile = File(...), node_id: str = Form(default
             return JSONResponse({"success": False, "error": "File size must be less than 10MB."})
         
         # Save to servable folder
-        servable_url = file_manager.save_file(content, filename=file.filename, node_id=node_id)
+        filename = file.filename or "unnamed_file"
+        servable_url = file_manager.save_file(content, filename=filename, node_id=node_id)
         
         return JSONResponse({
             "success": True,

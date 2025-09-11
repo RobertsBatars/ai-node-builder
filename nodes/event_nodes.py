@@ -33,8 +33,8 @@ class WebhookNode(EventNode):
 
     async def start_listening(self, trigger_workflow_callback):
         """Start the HTTP server in a separate thread."""
-        port_val = int(self.widget_values.get('port', self.port.default))
-        path_val = self.widget_values.get('path', self.path.default)
+        port_val = self.get_widget_value_safe('port', int)  # Uses widget default
+        path_val = self.get_widget_value_safe('path', str)  # Uses widget default
 
         # Ensure the loop is captured here in the main thread.
         if not self.loop:
@@ -68,7 +68,8 @@ class WebhookNode(EventNode):
             print("Shutting down webhook server...")
             self.server.shutdown()
             self.server.server_close()
-            self.server_thread.join()
+            if self.server_thread:
+                self.server_thread.join()
             self.server = None
             self.server_thread = None
             print("Webhook server stopped.")

@@ -81,7 +81,7 @@ What happens if you set both `is_dependency: True` and `do_not_wait: True` on th
 
 ### Widgets
 
-Widgets are UI elements that appear on the node in the frontend, allowing users to input static values. They are defined as class attributes using the `InputWidget` class from `core.definitions`. 
+Widgets are UI elements that appear on the node in the frontend, allowing users to input static values. They are defined as class attributes using the `InputWidget` class from `core.definitions`. In your `execute()` method, access widget values using `self.get_widget_value_safe('widget_name', expected_type)` which automatically uses the widget's default value if no user value is provided.
 
 For a complete list of available widgets and their properties, see [section 3](#3-available-widgets-and-properties).
 
@@ -139,8 +139,8 @@ class ConcatenateNode(BaseNode):
         Called when the node is executed.
         The arguments `text_a` and `text_b` directly correspond to the names of the INPUT_SOCKETS.
         """
-        # Get the value from the widget.
-        separator_value = self.widget_values.get('separator', self.separator.default)
+        # Get the value from the widget using the standardized method.
+        separator_value = self.get_widget_value_safe('separator', str)
 
         # The core logic of the node.
         concatenated_string = f"{text_a}{separator_value}{text_b}"
@@ -224,7 +224,7 @@ class SplitTextNode(BaseNode):
 
     # --- Execution ---
     def execute(self, text):
-        separator_val = self.widget_values.get('separator', self.separator.default)
+        separator_val = self.get_widget_value_safe('separator', str)
         
         # The core logic: split the string into a list.
         # This list will be mapped to the 'parts_0', 'parts_1', ... outputs.
@@ -269,8 +269,8 @@ class GateNode(BaseNode):
         pass
 
     def execute(self, value):
-        # Get the state of the gate from the widget
-        gate_is_open = self.widget_values.get('is_open', self.is_open.default)
+        # Get the state of the gate from the widget using standardized method
+        gate_is_open = self.get_widget_value_safe('is_open', bool)
 
         if gate_is_open:
             # The gate is open, so pass the value through.
@@ -326,7 +326,7 @@ class WaitNode(BaseNode):
         """
         Waits for the specified duration, then returns the input value.
         """
-        duration = self.widget_values.get('wait_time_seconds', self.wait_time_seconds.default)
+        duration = self.get_widget_value_safe('wait_time_seconds', float)
         
         try:
             duration = float(duration)
@@ -394,9 +394,9 @@ class DynamicBehaviorNode(BaseNode):
     use_dependency = InputWidget(widget_type="BOOLEAN", default=True)
     
     def load(self):
-        # Get widget values
-        should_wait = self.widget_values.get('wait_for_input', self.wait_for_input.default)
-        use_dependency = self.widget_values.get('use_dependency', self.use_dependency.default)
+        # Get widget values using standardized method
+        should_wait = self.get_widget_value_safe('wait_for_input', bool)
+        use_dependency = self.get_widget_value_safe('use_dependency', bool)
         
         # Build new socket configuration
         socket_config = {"type": SocketType.ANY, "array": True}
@@ -457,7 +457,7 @@ class LoopingAccumulatorNode(BaseNode):
 
     def execute(self, initial_value=None, add_value=None):
         is_initialized = self.memory.get('is_initialized', False)
-        threshold_val = float(self.widget_values.get('threshold', self.threshold.default))
+        threshold_val = self.get_widget_value_safe('threshold', float)
 
         if not is_initialized:
             # FIRST RUN: Triggered by 'initial_value'.
@@ -501,7 +501,7 @@ The `StringArrayCreatorNode` demonstrates the load-time configuration pattern wi
 1. **Socket Priority**: `do_not_wait` always overrides `is_dependency`
 2. **Load-Time vs Runtime**: Use load-time configuration for static behavior, runtime updates for loops and state changes
 3. **Complete Replacement**: Use `self.INPUT_SOCKETS["name"] = new_config` to fully replace socket configuration and avoid flag pollution
-4. **Widget Integration**: Use `self.widget_values.get()` with defaults for consistent behavior
+4. **Widget Integration**: Use `get_widget_value_safe()` with expected types for consistent behavior
 
 ### Advanced: The "do_wait" Override System
 
@@ -693,8 +693,8 @@ class WebhookNode(EventNode):
 
     async def start_listening(self, trigger_workflow_callback):
         """Start the HTTP server in a separate thread."""
-        port_val = int(self.widget_values.get('port', self.port.default))
-        path_val = self.widget_values.get('path', self.path.default)
+        port_val = self.get_widget_value_safe('port', int)
+        path_val = self.get_widget_value_safe('path', str)
 
         # Create a handler factory that passes the loop and callback to the handler
         def make_handler(*args, **kwargs):
@@ -1076,7 +1076,7 @@ class ReceiveEventNode(EventNode):
     
     def execute(self, *args, **kwargs):
         payload = self.memory.get('initial_payload', "")
-        event_id = self.widget_values.get('listen_id', self.listen_id.default)
+        event_id = self.get_widget_value_safe('listen_id', str)
         
         # Handle await functionality
         if isinstance(payload, dict) and 'await_id' in payload:

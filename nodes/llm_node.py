@@ -100,18 +100,18 @@ class LLMNode(BaseNode):
                     for tool_result in tool_results:
                         if tool_result and isinstance(tool_result, dict) and 'id' in tool_result:
                             self.memory['processed_tool_results'][tool_result['id']] = tool_result
-            # Get widget values
-            provider_val = self.widget_values.get('provider', self.provider.default)
-            model_val = self.widget_values.get('model', self.model.default)
-            api_key_val = self.widget_values.get('api_key', self.api_key.default)
-            temperature_val = self.widget_values.get('temperature', self.temperature.default)
-            max_tokens_val = int(self.widget_values.get('max_tokens', self.max_tokens.default))
-            top_p_val = self.widget_values.get('top_p', self.top_p.default)
-            use_display_val = self.widget_values.get('use_display_context', self.use_display_context.default)
-            display_filter_val = self.widget_values.get('display_context_filter', self.display_context_filter.default)
-            use_memory_val = self.widget_values.get('use_runtime_memory', self.use_runtime_memory.default)
-            enable_tools_val = self.widget_values.get('enable_tools', self.enable_tools.default)
-            output_intermediate_val = self.widget_values.get('output_intermediate_messages', self.output_intermediate_messages.default)
+            # Get widget values using safe method with actual widget defaults
+            provider_val: str = self.get_widget_value_safe('provider', str)
+            model_val: str = self.get_widget_value_safe('model', str)
+            api_key_val: str = self.get_widget_value_safe('api_key', str)
+            temperature_val: float = self.get_widget_value_safe('temperature', float)
+            max_tokens_val: int = self.get_widget_value_safe('max_tokens', int)
+            top_p_val: float = self.get_widget_value_safe('top_p', float)
+            use_display_val: bool = self.get_widget_value_safe('use_display_context', bool)
+            display_filter_val: str = self.get_widget_value_safe('display_context_filter', str)
+            use_memory_val: bool = self.get_widget_value_safe('use_runtime_memory', bool)
+            enable_tools_val: bool = self.get_widget_value_safe('enable_tools', bool)
+            output_intermediate_val: bool = self.get_widget_value_safe('output_intermediate_messages', bool)
 
             # Validate inputs
             if not provider_val or not model_val:
@@ -310,7 +310,7 @@ class LLMNode(BaseNode):
                 await self.send_message_to_client(MessageType.DEBUG, {"message": f"  MSG[{i}]: {json.dumps(msg, indent=2)}"})
             await self.send_message_to_client(MessageType.DEBUG, {"message": "📨 END MESSAGES DUMP"})
             
-            response = await litellm.acompletion(
+            response = await litellm.acompletion(  # type: ignore
                 model=full_model,
                 messages=messages,
                 temperature=temperature_val,
@@ -320,15 +320,17 @@ class LLMNode(BaseNode):
             )
 
             # Extract response
-            response_content = response.choices[0].message.content or ""
-            tool_calls = response.choices[0].message.tool_calls or []
+            response_content = response.choices[0].message.content or ""  # type: ignore
+            tool_calls = response.choices[0].message.tool_calls or []  # type: ignore
 
             await self.send_message_to_client(MessageType.LOG, {"message": f"✅ LLM response received ({len(response_content)} chars, {len(tool_calls)} tool calls)"})
             
             # Log tool calls if any
             if tool_calls:
                 tool_names = [tc.function.name if hasattr(tc, 'function') and hasattr(tc.function, 'name') else 'unknown' for tc in tool_calls]
-                await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Tool calls requested: {', '.join(tool_names)}"})
+                # Ensure all tool names are strings
+                safe_tool_names = [str(name) for name in tool_names if name is not None]
+                await self.send_message_to_client(MessageType.LOG, {"message": f"🔧 Tool calls requested: {', '.join(safe_tool_names)}"})
 
             # Process tool calls
             tool_call_outputs = []
@@ -470,7 +472,7 @@ class LLMNode(BaseNode):
             await self.send_message_to_client(MessageType.ERROR, {"message": error_msg})
             return (error_msg, [])
 
-    async def _get_display_context_messages(self, filter_mode: str, current_prompt: str = None) -> List[Dict[str, Any]]:
+    async def _get_display_context_messages(self, filter_mode: str, current_prompt: Optional[str] = None) -> List[Dict[str, Any]]:
         """Extract and convert display context to chat messages."""
         display_context = self.get_display_context()
         messages = []
@@ -522,7 +524,7 @@ class LLMNode(BaseNode):
         await self.send_message_to_client(MessageType.DEBUG, {"message": f"🔍 FILTERING RESULT: {len(messages)} messages after filtering"})
         return messages
 
-    async def _process_multimodal_input(self, prompt: str, image: str = None, model: str = "") -> Dict[str, Any]:
+    async def _process_multimodal_input(self, prompt: str, image: Optional[str] = None, model: str = "") -> Dict[str, Any]:
         """
         Process input that may contain images for vision-capable models.
         Priority: dedicated image socket > embedded base64 in prompt
@@ -669,7 +671,7 @@ class LLMNode(BaseNode):
         tool_name_to_index = {tool['function']['name']: i for i, tool in enumerate(tool_definitions)}
         
         # Create array to hold tool calls for each tool (matching array size)
-        processed_calls = [None] * len(tool_definitions) if tool_definitions else []
+        processed_calls: List[Dict[str, Any]] = [{} for _ in range(len(tool_definitions))] if tool_definitions else []
         
         for i, tool_call in enumerate(tool_calls):
             try:
@@ -721,16 +723,16 @@ class LLMNode(BaseNode):
     def _set_api_key(self, provider: str, api_key: str):
         """Set the API key for the specified provider."""
         if provider == "openai":
-            litellm.openai_key = api_key
+            litellm.openai_key = api_key  # type: ignore
         elif provider == "anthropic":
-            litellm.anthropic_key = api_key
+            litellm.anthropic_key = api_key  # type: ignore
         elif provider == "vertex_ai":
-            litellm.vertex_ai_project = None  # Will use api_key as token
-            litellm.vertex_ai_location = None
+            litellm.vertex_ai_project = None  # type: ignore
+            litellm.vertex_ai_location = None  # type: ignore
         elif provider == "together_ai":
-            litellm.togetherai_api_key = api_key
+            litellm.togetherai_api_key = api_key  # type: ignore
         elif provider == "groq":
-            litellm.groq_api_key = api_key
+            litellm.groq_api_key = api_key  # type: ignore
         else:
             # For other providers, set the general api_key
-            litellm.api_key = api_key
+            litellm.api_key = api_key  # type: ignore

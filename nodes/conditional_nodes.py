@@ -50,13 +50,29 @@ class DecisionNode(BaseNode):
         elif op_str == "!=":
             result = val1 != val2
         elif op_str == ">":
-            result = val1 > val2
+            # Type check for numeric comparison
+            if isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
+                result = val1 > val2  # type: ignore
+            else:
+                result = str(val1) > str(val2)
         elif op_str == "<":
-            result = val1 < val2
+            # Type check for numeric comparison
+            if isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
+                result = val1 < val2  # type: ignore
+            else:
+                result = str(val1) < str(val2)
         elif op_str == ">=":
-            result = val1 >= val2
+            # Type check for numeric comparison
+            if isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
+                result = val1 >= val2  # type: ignore
+            else:
+                result = str(val1) >= str(val2)
         elif op_str == "<=":
-            result = val1 <= val2
+            # Type check for numeric comparison
+            if isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
+                result = val1 <= val2  # type: ignore
+            else:
+                result = str(val1) <= str(val2)
             
         # --- Routing Logic ---
         if result:

@@ -402,10 +402,11 @@ class NodeEngine:
                                 for target_key in run_context["target_map"].get(source_key, []):
                                     target_node_id, target_slot_str = target_key.split(':')
                                     target_node_data = next((n for n in graph_data['nodes'] if str(n['id']) == target_node_id), None)
-                                    target_input_info = target_node_data['inputs'][int(target_slot_str)]
-                                    target_input_name = target_input_info['name']
-                                    push_data = {"target_input_name": target_input_name, "value": item}
-                                    pushes_by_node[target_node_id].append(push_data)
+                                    if target_node_data is not None:
+                                        target_input_info = target_node_data['inputs'][int(target_slot_str)]
+                                        target_input_name = target_input_info['name']
+                                        push_data = {"target_input_name": target_input_name, "value": item}
+                                        pushes_by_node[target_node_id].append(push_data)
                             
                             # Move to the next physical slot for the next item in the array
                             physical_slot_index += 1
@@ -417,10 +418,11 @@ class NodeEngine:
                             for target_key in run_context["target_map"].get(source_key, []):
                                 target_node_id, target_slot_str = target_key.split(':')
                                 target_node_data = next((n for n in graph_data['nodes'] if str(n['id']) == target_node_id), None)
-                                target_input_info = target_node_data['inputs'][int(target_slot_str)]
-                                target_input_name = target_input_info['name']
-                                push_data = {"target_input_name": target_input_name, "value": value}
-                                pushes_by_node[target_node_id].append(push_data)
+                                if target_node_data is not None:
+                                    target_input_info = target_node_data['inputs'][int(target_slot_str)]
+                                    target_input_name = target_input_info['name']
+                                    push_data = {"target_input_name": target_input_name, "value": value}
+                                    pushes_by_node[target_node_id].append(push_data)
                         
                         # Move to the next physical slot for the next standard output
                         physical_slot_index += 1

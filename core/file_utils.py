@@ -4,7 +4,7 @@ import uuid
 import base64
 import mimetypes
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 class ServableFileManager:
@@ -14,7 +14,7 @@ class ServableFileManager:
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(exist_ok=True)
         
-    def save_file(self, content: bytes, filename: str = None, node_id: str = None) -> str:
+    def save_file(self, content: bytes, filename: Optional[str] = None, node_id: Optional[str] = None) -> str:
         """
         Save file content to servable directory.
         Returns the servable URL path.
@@ -39,7 +39,7 @@ class ServableFileManager:
             
         return self.get_file_url(filename)
     
-    def save_base64_image(self, base64_data: str, filename: str = None) -> str:
+    def save_base64_image(self, base64_data: str, filename: Optional[str] = None) -> str:
         """
         Save base64 encoded image to servable directory.
         Handles data URL format: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...
@@ -83,7 +83,7 @@ class ServableFileManager:
         """Check if file exists in servable directory."""
         return (self.base_dir / filename).exists()
     
-    def list_files(self) -> List[Dict[str, any]]:
+    def list_files(self) -> List[Dict[str, Any]]:
         """
         List all files in servable directory with metadata.
         Returns list of dicts with file info.
@@ -125,7 +125,7 @@ class ServableFileManager:
             print(f"Error deleting file {filename}: {e}")
             return False
     
-    def get_file_info(self, filename: str) -> Optional[Dict[str, any]]:
+    def get_file_info(self, filename: str) -> Optional[Dict[str, Any]]:
         """Get detailed info for a specific file."""
         file_path = self.base_dir / filename
         if not file_path.exists():

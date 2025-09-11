@@ -14,7 +14,7 @@ class TextNode(BaseNode):
         pass
 
     def execute(self):
-        text_value = self.widget_values.get('value', self.value.default)
+        text_value = self.get_widget_value_safe('value', str)  # Uses InputWidget default
         return (text_value,)
 
 class NumberNode(BaseNode):
@@ -27,8 +27,8 @@ class NumberNode(BaseNode):
         pass
 
     def execute(self):
-        num_value = self.widget_values.get('value', self.value.default)
-        return (float(num_value),)
+        num_value = self.get_widget_value_safe('value', int)  # Uses InputWidget default=10
+        return (num_value,)
 
 # --- PROCESSING NODE ---
 
@@ -69,9 +69,12 @@ class ConcatenateArrayNode(BaseNode):
         pass
 
     def execute(self, texts):
-        separator_value = self.widget_values.get('separator', self.separator.default)
+        separator_value = self.get_widget_value_safe('separator', str)
         # 'texts' will be a list of strings
-        result = separator_value.join(texts)
+        if isinstance(separator_value, str):
+            result = separator_value.join(texts)
+        else:
+            result = ', '.join(texts)  # fallback
         return (result,)
 
 # --- OUTPUT NODE ---
@@ -97,7 +100,7 @@ class LogNode(BaseNode):
         from core.definitions import MessageType
         
         # Get the selected message type from the widget
-        msg_type = self.widget_values.get('message_type', self.message_type.default)
+        msg_type = self.get_widget_value_safe('message_type', str)
         
         # Map string to MessageType enum
         message_type_map = {
@@ -148,11 +151,11 @@ class WidgetTestNode(BaseNode):
         pass
 
     def execute(self):
-        text_val = self.widget_values.get('text_widget', self.text_widget.default)
-        number_val = self.widget_values.get('number_widget', self.number_widget.default)
-        slider_val = self.widget_values.get('slider_widget', self.slider_widget.default)
-        boolean_val = self.widget_values.get('boolean_widget', self.boolean_widget.default)
-        combo_val = self.widget_values.get('combo_widget', self.combo_widget.default)
+        text_val = self.get_widget_value_safe('text_widget', str)  # Uses widget default
+        number_val = self.get_widget_value_safe('number_widget', int)  # Uses widget default
+        slider_val = self.get_widget_value_safe('slider_widget', float)  # Uses widget default
+        boolean_val = self.get_widget_value_safe('boolean_widget', bool)  # Uses widget default
+        combo_val = self.get_widget_value_safe('combo_widget', str)  # Uses widget default
 
         output_string = f"Text: {text_val}, Number: {number_val}, Slider: {slider_val}, Boolean: {boolean_val}, Combo: {combo_val}"
         return (output_string,)

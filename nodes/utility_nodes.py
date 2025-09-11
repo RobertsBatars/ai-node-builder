@@ -34,16 +34,16 @@ class WaitNode(BaseNode):
         Waits for the specified duration, then returns the input value.
         The 'async' keyword is crucial here to allow non-blocking waits.
         """
-        # Get the wait duration from the widget's value
-        duration = self.widget_values.get('wait_time_seconds', self.wait_time_seconds.default)
+        # Get the wait duration from the widget's value using standardized method
+        duration = self.get_widget_value_safe('wait_time_seconds', float)
         
         # Ensure duration is a non-negative number
         try:
             duration = float(duration)
             if duration < 0:
-                duration = 0
+                duration = 0.0
         except (ValueError, TypeError):
-            duration = self.wait_time_seconds.default
+            duration = float(self.wait_time_seconds.default or 1.0)
 
         print(f"WaitNode: Waiting for {duration} seconds...")
         await asyncio.sleep(duration)

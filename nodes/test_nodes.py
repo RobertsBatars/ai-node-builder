@@ -90,7 +90,7 @@ class LoopingAccumulatorNode(BaseNode):
 
     def execute(self, initial_value=None, add_value=None):
         is_initialized = self.memory.get('is_initialized', False)
-        threshold_val = float(self.widget_values.get('threshold', self.threshold.default))
+        threshold_val = self.get_widget_value_safe('threshold', float)
 
         if not is_initialized:
             # First execution: triggered by 'initial_value'
