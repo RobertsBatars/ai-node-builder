@@ -12,6 +12,7 @@ GEMINI.md
 QWEN.md
 2025*
 .claude/
+.github/copilot-instructions.md
 
 # Temporary files
 TMP.txt

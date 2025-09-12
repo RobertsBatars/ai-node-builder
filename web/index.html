@@ -37,6 +37,8 @@
         #save-button:hover { background-color: #007B9E; }
         #load-button { background-color: #f44336; color: white; }
         #load-button:hover { background-color: #D32F2F; }
+        #clear-button { background-color: #f44336; color: white; }
+        #clear-button:hover { background-color: #D32F2F; }
 
         #toggle-log-button { background-color: #9c27b0; color: white; }
         #toggle-log-button:hover { background-color: #7b1fa2; }
@@ -383,6 +385,7 @@
         <button id="stop-listen-button" class="top-button">Stop Listening</button>
         <button id="save-button" class="top-button">Save</button>
         <button id="load-button" class="top-button">Load</button>
+        <button id="clear-button" class="top-button">Clear</button>
         <button id="toggle-log-button" class="top-button">Show Logs</button>
         <button id="toggle-display-button" class="top-button">Show Display</button>
         <button id="toggle-files-button" class="top-button">Show Files</button>
@@ -541,6 +544,7 @@
             const stopListenButton = document.getElementById('stop-listen-button');
             const saveButton = document.getElementById('save-button');
             const loadButton = document.getElementById('load-button');
+            const clearButton = document.getElementById('clear-button');
             const toggleLogButton = document.getElementById('toggle-log-button');
             const clearLogButton = document.getElementById('clear-log-button');
             const logPanel = document.getElementById('log-panel');
@@ -595,6 +599,70 @@
                     showWarnings: true
                 }
             };
+
+            // Autosave functionality
+            let autosaveTimeout = null;
+            const AUTOSAVE_KEY = 'ai_node_builder_workflow';
+            const AUTOSAVE_DELAY = 2000; // 2 seconds
+
+            function saveWorkflowAuto() {
+                try {
+                    const selected_nodes_map = canvas.selected_nodes;
+                    const selected_ids = Object.keys(selected_nodes_map);
+                    const start_node_id = selected_ids.length > 0 ? selected_ids[0] : null;
+
+                    const data = {
+                        graph_data: graph.serialize(),
+                        start_node_id: start_node_id
+                    };
+                    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data));
+                } catch (error) {
+                    console.error('Autosave failed:', error);
+                }
+            }
+
+            function loadWorkflowAuto() {
+                try {
+                    const saved = localStorage.getItem(AUTOSAVE_KEY);
+                    if (saved) {
+                        const data = JSON.parse(saved);
+                        // Only restore if there's actually graph data with nodes
+                        if (data.graph_data && data.graph_data.nodes && data.graph_data.nodes.length > 0) {
+                            graph.configure(data.graph_data);
+                            
+                            if (data.start_node_id) {
+                                const nodeToSelect = graph.getNodeById(data.start_node_id);
+                                if (nodeToSelect) {
+                                    canvas.selectNode(nodeToSelect, false);
+                                }
+                            }
+                            
+                            log("Workflow restored from autosave");
+                            return true;
+                        } else {
+                            // Clear empty autosave data
+                            localStorage.removeItem(AUTOSAVE_KEY);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Autosave restore failed:', error);
+                    localStorage.removeItem(AUTOSAVE_KEY);
+                }
+                return false;
+            }
+
+            function clearWorkflowAuto() {
+                localStorage.removeItem(AUTOSAVE_KEY);
+                graph.clear();
+                log("Workflow cleared");
+            }
+
+            function triggerAutosave() {
+                if (autosaveTimeout) {
+                    clearTimeout(autosaveTimeout);
+                }
+                autosaveTimeout = setTimeout(saveWorkflowAuto, AUTOSAVE_DELAY);
+            }
 
             const log = (message) => {
                 console.log(message);
@@ -1091,13 +1159,21 @@
             // Add event listeners for graph changes
             graph.onNodeAdded = function(node) {
                 setTimeout(() => checkForDisplayInputEventNode(), 100);
+                triggerAutosave();
             };
             graph.onNodeRemoved = function(node) {
                 setTimeout(() => checkForDisplayInputEventNode(), 100);
+                triggerAutosave();
+            };
+            graph.onConnectionChange = function() {
+                triggerAutosave();
             };
             
             const resizeCanvas = () => canvas.resize(window.innerWidth, window.innerHeight);
             window.addEventListener('resize', resizeCanvas);
+            window.addEventListener('beforeunload', () => {
+                saveWorkflowAuto(); // Save immediately before page unload
+            });
             resizeCanvas();
 
 
@@ -1531,6 +1607,8 @@
                 log("Nodes loaded. Right-click to add nodes.");
                 // Initial check after nodes are loaded
                 setTimeout(() => checkForDisplayInputEventNode(), 200);
+                // Attempt to restore autosaved workflow
+                setTimeout(() => loadWorkflowAuto(), 300);
             } catch (error) {
                 log("Error loading node definitions.");
                 console.error("Fetch Error:", error);
@@ -1637,6 +1715,8 @@
                             }
                             
                             log("Workflow loaded successfully.");
+                            // Trigger autosave to start protecting the newly loaded workflow
+                            triggerAutosave();
                         } catch (err) {
                             log("Error loading or parsing workflow file.");
                             console.error(err);
@@ -1645,6 +1725,23 @@
                     reader.readAsText(file);
                 };
                 input.click();
+            });
+
+            clearButton.addEventListener("click", () => {
+                // Check if event listening is active and warn user
+                if (eventListening) {
+                    if (confirm("This will stop event listening and clear the workflow. Continue?")) {
+                        // Stop event listening first
+                        if (ws.readyState === WebSocket.OPEN) {
+                            setListeningState(false);
+                            ws.send(JSON.stringify({ action: "stop_listening" }));
+                        }
+                        clearWorkflowAuto();
+                    }
+                } else {
+                    // No event listening active, clear immediately
+                    clearWorkflowAuto();
+                }
             });
 
             saveDisplayBtn.addEventListener("click", () => {
@@ -1674,6 +1771,14 @@
                 };
                 input.click();
             });
+
+            // Start periodic autosave check for widget changes
+            setInterval(() => {
+                // Only trigger autosave if there are nodes in the graph
+                if (graph.list_of_graphnodes && graph.list_of_graphnodes.length > 0) {
+                    triggerAutosave();
+                }
+            }, 10000); // Check every 10 seconds
 
             graph.start();
         })();

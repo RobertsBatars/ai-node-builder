@@ -562,3 +562,29 @@ The type safety improvements were implemented with zero breaking changes:
 *   **Verification testing**: Comprehensive import testing ensured no regression in functionality
 
 This type safety initiative establishes a foundation for continued code quality improvements and provides a better development experience for future node creators and system maintainers.
+
+## **11. Frontend User Experience Features**
+
+### **11.1. Autosave System**
+
+A transparent autosave system protects user work without interfering with manual save/load operations.
+
+**Implementation**:
+*   **Storage**: localStorage with key `ai_node_builder_workflow`
+*   **Triggers**: Graph changes (debounced 2s), file loads, page exit, periodic saves (10s for crash protection)
+*   **Restoration**: Automatic on page load when meaningful content exists
+*   **Independence**: Separate from manual Save/Load file operations
+
+### **11.2. Clear Workflow Feature**
+
+**Functionality**: Complete workflow reset with safety measures
+*   **Action**: Removes all nodes, connections, and autosave data
+*   **Safety**: Warns and stops event listening if active before clearing
+*   **UI**: Red destructive button between Load and Show Logs
+
+### **11.3. Data Loss Protection**
+
+Dual-layer protection against data loss:
+*   **Normal Exit**: `beforeunload` event handles page refresh/close
+*   **Crash Protection**: 10-second periodic saves for browser crashes, power loss
+*   **Performance**: Minimal impact (~1-5ms every 10 seconds with debouncing)
