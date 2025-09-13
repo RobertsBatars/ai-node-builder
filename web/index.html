@@ -19,9 +19,10 @@
             display: flex; align-items: center; flex-wrap: wrap;
         }
         .top-button {
-            padding: 8px 16px;
+            padding: 6px 12px;
             border: none; border-radius: 4px; cursor: pointer; font-weight: bold;
-            margin-right: 10px; margin-bottom: 5px; /* Added margin-bottom for wrapping */
+            margin-right: 8px; margin-bottom: 5px; /* Added margin-bottom for wrapping */
+            font-size: 13px;
         }
         #run-button { background-color: #4CAF50; color: white; }
         #run-button:hover { background-color: #45a049; }
@@ -48,6 +49,8 @@
         #toggle-files-button:hover { background-color: #455a64; }
         #toggle-settings-button { background-color: #795548; color: white; }
         #toggle-settings-button:hover { background-color: #5d4037; }
+        #docs-button { background-color: #673ab7; color: white; }
+        #docs-button:hover { background-color: #5e35b1; }
 
         .top-button.disabled { background-color: #555; cursor: not-allowed; }
         #status-log { margin-left: 10px; font-style: italic; color: #aaa; }
@@ -379,17 +382,18 @@
 </head>
 <body>
     <div id="top-bar">
-        <button id="run-button" class="top-button">RUN</button>
-        <button id="stop-button" class="top-button">STOP</button>
-        <button id="listen-button" class="top-button">Listen for Events</button>
-        <button id="stop-listen-button" class="top-button">Stop Listening</button>
-        <button id="save-button" class="top-button">Save</button>
-        <button id="load-button" class="top-button">Load</button>
-        <button id="clear-button" class="top-button">Clear</button>
-        <button id="toggle-log-button" class="top-button">Show Logs</button>
-        <button id="toggle-display-button" class="top-button">Show Display</button>
-        <button id="toggle-files-button" class="top-button">Show Files</button>
-        <button id="toggle-settings-button" class="top-button">Settings</button>
+        <button id="run-button" class="top-button">▶️ RUN</button>
+        <button id="stop-button" class="top-button">⏹️ STOP</button>
+        <button id="listen-button" class="top-button">👂 Listen for Events</button>
+        <button id="stop-listen-button" class="top-button">🔇 Stop Listening</button>
+        <button id="save-button" class="top-button">💾 Save</button>
+        <button id="load-button" class="top-button">📁 Load</button>
+        <button id="clear-button" class="top-button">🗑️ Clear</button>
+        <button id="toggle-log-button" class="top-button">📝 Show Logs</button>
+        <button id="toggle-display-button" class="top-button">� Show Display</button>
+        <button id="toggle-files-button" class="top-button">📂 Show Files</button>
+        <button id="toggle-settings-button" class="top-button">⚙️ Settings</button>
+        <button id="docs-button" class="top-button">📚 Docs</button>
         <div id="status-log">Status: Disconnected</div>
     </div>
 
@@ -402,7 +406,7 @@
                 <div class="log-filter-checkbox"><input type="checkbox" id="filter-debug" checked><label for="filter-debug">Debug</label></div>
                 <div class="log-filter-checkbox"><input type="checkbox" id="filter-test" checked><label for="filter-test">Test</label></div>
                 <div class="log-filter-checkbox"><input type="checkbox" id="filter-error" checked><label for="filter-error">Error</label></div>
-                <button id="clear-log-button" class="top-button">Clear</button>
+                <button id="clear-log-button" class="top-button">🗑️ Clear</button>
             </div>
         </div>
         <div id="log-content" class="panel-content"></div>
@@ -413,9 +417,9 @@
             <span>Display</span>
             <div id="panel-controls">
                 <div class="log-filter-checkbox" style="margin-right: 10px;"><input type="checkbox" id="filter-warnings" checked><label for="filter-warnings">Warnings</label></div>
-                <button id="save-display-btn" class="top-button" style="background-color:#008CBA;">Save</button>
-                <button id="load-display-btn" class="top-button">Load</button>
-                <button id="clear-display-btn" class="top-button">Clear</button>
+                <button id="save-display-btn" class="top-button" style="background-color:#008CBA;">💾 Save</button>
+                <button id="load-display-btn" class="top-button">📁 Load</button>
+                <button id="clear-display-btn" class="top-button">🗑️ Clear</button>
             </div>
         </div>
         <div id="display-messages" class="panel-content"></div>
@@ -966,7 +970,7 @@
             toggleLogButton.addEventListener('click', () => {
                 logPanelVisible = !logPanelVisible;
                 logPanel.style.display = logPanelVisible ? 'flex' : 'none';
-                toggleLogButton.textContent = logPanelVisible ? 'Hide Logs' : 'Show Logs';
+                toggleLogButton.textContent = logPanelVisible ? '📝 Hide Logs' : '📝 Show Logs';
                 if (logPanelVisible) {
                     logContent.scrollTop = logContent.scrollHeight;
                     applyLogFilters();
@@ -1029,7 +1033,7 @@
                 displayPanelVisible = forceShow || !displayPanelVisible;
                 displayPanel.style.display = displayPanelVisible ? 'flex' : 'none';
                 body.classList.toggle('display-panel-visible', displayPanelVisible);
-                toggleDisplayButton.textContent = displayPanelVisible ? 'Hide Display' : 'Show Display';
+                toggleDisplayButton.textContent = displayPanelVisible ? '💬 Hide Display' : '💬 Show Display';
                 // Check for DisplayInputEventNode when panel is opened
                 if (displayPanelVisible) {
                     setTimeout(() => checkForDisplayInputEventNode(), 50);
@@ -1048,7 +1052,7 @@
             toggleFilesButton.addEventListener('click', () => {
                 filesPanelVisible = !filesPanelVisible;
                 filesPanel.style.display = filesPanelVisible ? 'flex' : 'none';
-                toggleFilesButton.textContent = filesPanelVisible ? 'Hide Files' : 'Show Files';
+                toggleFilesButton.textContent = filesPanelVisible ? '📂 Hide Files' : '📂 Show Files';
                 body.classList.toggle('files-panel-visible', filesPanelVisible);
                 if (filesPanelVisible) {
                     loadFilesList();
@@ -1062,11 +1066,17 @@
             // Setup files panel upload functionality
             setupFilesPanelUpload();
 
+            // Docs button event listener
+            const docsButton = document.getElementById('docs-button');
+            docsButton.addEventListener('click', () => {
+                window.open('/docs/', '_blank');
+            });
+
             // Settings panel event listeners
             toggleSettingsButton.addEventListener('click', () => {
                 settingsPanelVisible = !settingsPanelVisible;
                 settingsPanel.style.display = settingsPanelVisible ? 'flex' : 'none';
-                toggleSettingsButton.textContent = settingsPanelVisible ? 'Hide Settings' : 'Settings';
+                toggleSettingsButton.textContent = settingsPanelVisible ? '⚙️ Hide Settings' : '⚙️ Settings';
                 body.classList.toggle('settings-panel-visible', settingsPanelVisible);
                 if (settingsPanelVisible && !appSettings.ui) {
                     loadSettings();
@@ -1598,6 +1608,33 @@
                         
                         this.onAdded = function() { setTimeout(() => updateDynamicWidgets(), 10); };
                         this.onConnectionsChange = function() { setTimeout(() => updateDynamicWidgets(), 10); };
+                        
+                        // Add context menu with documentation option
+                        this.getMenuOptions = function() {
+                            const options = [];
+                            const nodeType = blueprint.name;
+                            
+                            // Add documentation option if available
+                            options.push({
+                                content: "📚 View Documentation",
+                                callback: async () => {
+                                    try {
+                                        const response = await fetch('/api/docs/registry');
+                                        const registry = await response.json();
+                                        if (nodeType in registry.nodes) {
+                                            window.open(`/docs/#node/${nodeType}`, '_blank');
+                                        } else {
+                                            alert(`Documentation not available for ${nodeType}`);
+                                        }
+                                    } catch (error) {
+                                        console.error('Error checking documentation:', error);
+                                        alert('Error accessing documentation system');
+                                    }
+                                }
+                            });
+                            
+                            return options;
+                        };
                     }
 
                     DynamicNode.title = blueprint.name;

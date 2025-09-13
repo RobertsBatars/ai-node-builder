@@ -6,9 +6,15 @@ import asyncio
 import uuid
 from datetime import datetime
 from collections import defaultdict
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form
+from pathlib import Path
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
 from core.engine import NodeEngine
 from core.event_manager import EventManager
@@ -200,6 +206,171 @@ async def update_settings(settings_data: dict):
 async def get_default_settings():
     """Get default application settings."""
     return JSONResponse({"success": True, "defaults": DEFAULT_SETTINGS})
+
+# --- Documentation System Endpoints ---
+
+@app.get("/docs/images/{path:path}")
+async def serve_docs_images(path: str):
+    """Serve documentation images."""
+    image_file = Path("docs/images") / path
+    if image_file.exists() and image_file.is_file():
+        return FileResponse(image_file)
+    else:
+        raise HTTPException(404, "Image not found")
+
+@app.get("/docs/{path:path}")
+async def serve_docs(path: str = ""):
+    """Serve the documentation web app."""
+    if not path or path.endswith('/'):
+        path += "index.html"
+    
+    docs_file = Path("docs/app") / path
+    if docs_file.exists():
+        return FileResponse(docs_file)
+    else:
+        return FileResponse("docs/app/index.html")  # SPA routing
+
+@app.get("/api/docs/registry")
+async def get_documentation_registry():
+    """Auto-generate registry by scanning docs/nodes/ directory."""
+    docs_path = Path("docs/nodes")
+    registry = {
+        "categories": {},
+        "nodes": {},
+        "last_updated": datetime.now().isoformat()
+    }
+    
+    if not docs_path.exists():
+        return registry
+    
+    # Scan each category folder
+    for category_dir in docs_path.iterdir():
+        if category_dir.is_dir():
+            category_name = category_dir.name
+            registry["categories"][category_name] = []
+            
+            # Scan for .md files in category
+            for doc_file in category_dir.glob("*.md"):
+                node_name = doc_file.stem
+                
+                # Parse frontmatter for metadata
+                metadata = parse_markdown_frontmatter(doc_file)
+                
+                node_info = {
+                    "name": node_name,
+                    "title": metadata.get("title", node_name),
+                    "category": category_name,
+                    "file_path": str(doc_file.relative_to("docs")),
+                    "description": metadata.get("description", ""),
+                    "tags": metadata.get("tags", []),
+                    "complexity": metadata.get("complexity", "beginner")
+                }
+                
+                registry["categories"][category_name].append(node_info)
+                registry["nodes"][node_name] = node_info
+    
+    return registry
+
+@app.get("/api/docs/content/{node_name}")
+async def get_node_documentation(node_name: str):
+    """Get specific node documentation content."""
+    registry_data = await get_documentation_registry()
+    if node_name not in registry_data["nodes"]:
+        raise HTTPException(404, "Documentation not found")
+    
+    node_info = registry_data["nodes"][node_name]
+    doc_path = Path("docs") / node_info["file_path"]
+    
+    try:
+        with open(doc_path, 'r', encoding='utf-8') as f:
+            raw_content = f.read()
+        
+        # Strip frontmatter from content before returning
+        content = strip_frontmatter_from_content(raw_content)
+        return {"content": content, "metadata": node_info}
+    except FileNotFoundError:
+        raise HTTPException(404, f"Documentation file not found: {doc_path}")
+    except Exception as e:
+        raise HTTPException(500, f"Error reading documentation: {str(e)}")
+
+@app.get("/api/docs/guide/{guide_name}")
+async def get_guide_documentation(guide_name: str):
+    """Get specific guide documentation content."""
+    # Map guide names to files
+    guide_mapping = {
+        "node-creation": "node_creation_guide.md",
+        "node-documentation": "node_documentation_guide.md",
+        "devdocs": "devdocs.md"
+    }
+    
+    if guide_name not in guide_mapping:
+        raise HTTPException(404, "Guide not found")
+    
+    guide_file = guide_mapping[guide_name]
+    guide_path = Path("docs") / "guides" / guide_file
+    
+    try:
+        with open(guide_path, 'r', encoding='utf-8') as f:
+            raw_content = f.read()
+        
+        # Extract metadata if present, otherwise create basic metadata
+        metadata = parse_markdown_frontmatter(guide_path)
+        if not metadata:
+            metadata = {
+                "title": guide_name.replace("-", " ").title(),
+                "type": "guide",
+                "category": "guides"
+            }
+        else:
+            # Ensure guides always have the "guides" category
+            metadata["category"] = "guides"
+            metadata["type"] = "guide"
+        
+        # Strip frontmatter from content before returning
+        content = strip_frontmatter_from_content(raw_content)
+        return {"content": content, "metadata": metadata}
+    except FileNotFoundError:
+        raise HTTPException(404, f"Guide file not found: {guide_path}")
+    except Exception as e:
+        raise HTTPException(500, f"Error reading guide: {str(e)}")
+
+def parse_markdown_frontmatter(file_path):
+    """Extract YAML frontmatter from markdown file."""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        if content.startswith('---\n'):
+            try:
+                parts = content.split('---\n', 2)
+                if len(parts) >= 3:
+                    frontmatter = parts[1]
+                    if yaml:
+                        return yaml.safe_load(frontmatter)
+                    else:
+                        # Fallback if pyyaml is not available
+                        print("Warning: pyyaml not installed. Frontmatter parsing disabled.")
+                        return {}
+                return {}
+            except ValueError:
+                return {}
+        return {}
+    except Exception as e:
+        print(f"Error parsing frontmatter for {file_path}: {e}")
+        return {}
+
+def strip_frontmatter_from_content(content):
+    """Remove YAML frontmatter from markdown content."""
+    if content.startswith('---\n'):
+        try:
+            parts = content.split('---\n', 2)
+            if len(parts) >= 3:
+                return parts[2]  # Return content after second ---
+        except ValueError:
+            pass
+    return content
+
+# --- End Documentation System Endpoints ---
 
 async def broadcast_to_frontend(message: dict):
     if ACTIVE_WEBSOCKET:

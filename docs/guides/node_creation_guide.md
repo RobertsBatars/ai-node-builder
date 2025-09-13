@@ -2,6 +2,16 @@
 
 This guide provides a comprehensive walkthrough for creating custom nodes for the AI Node Builder application. By following these steps, you can create any kind of node, from simple inputs to complex processing units.
 
+## 📚 Documentation Guide
+
+After creating your node, you'll want to document it properly for other developers. For comprehensive instructions on how to create professional documentation for your nodes, see the [Node Documentation Guide](node_documentation_guide.md) ([open in docs viewer](/docs/#guide/node-documentation)). This guide covers:
+
+- How to structure node documentation
+- Required and optional fields for input/output sockets
+- YAML frontmatter configuration
+- Examples and best practices
+- How to integrate with the documentation system
+
 ## 1. Core Concepts
 
 Before creating a node, it's important to understand the fundamental building blocks of the system.

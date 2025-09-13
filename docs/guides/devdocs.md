@@ -588,3 +588,50 @@ Dual-layer protection against data loss:
 *   **Normal Exit**: `beforeunload` event handles page refresh/close
 *   **Crash Protection**: 10-second periodic saves for browser crashes, power loss
 *   **Performance**: Minimal impact (~1-5ms every 10 seconds with debouncing)
+
+## **12. Documentation System**
+
+The application includes a comprehensive documentation system for nodes and development guides.
+
+### **12.1. Architecture**
+
+The documentation system follows a modular, auto-discovery pattern:
+*   **Backend API**: FastAPI endpoints for registry and content retrieval
+*   **Frontend SPA**: Standalone documentation web app with routing and search
+*   **Auto-Discovery**: Filesystem scanning eliminates manual registry maintenance
+
+### **12.2. Documentation Structure**
+
+```
+docs/
+├── nodes/                 # Node documentation organized by category
+│   ├── input/            # Input nodes (TextNode, NumberNode)
+│   ├── ai/               # AI nodes (LLMNode)
+│   ├── math/             # Mathematical nodes (AddNode)
+│   └── tools/            # Tool nodes (CalculatorToolNode)
+├── guides/               # Development guides
+│   ├── node_creation_guide.md
+│   └── node_documentation_guide.md
+└── app/                  # Documentation web application
+    ├── index.html
+    ├── docs.js           # SPA router and functionality
+    └── docs.css          # Styling
+```
+
+### **12.3. Key Features**
+
+*   **YAML Frontmatter**: Structured metadata for nodes (title, description, category, tags)
+*   **Markdown Content**: Rich documentation with code examples and images
+*   **Context-Aware Access**: Right-click nodes in main interface to view documentation
+*   **Search & Navigation**: Full-text search with category browsing
+*   **Back Navigation**: Breadcrumb navigation between home, categories, and nodes
+
+### **12.4. Integration Points**
+
+*   **Main Interface**: 📚 Docs button opens in new tab
+*   **Context Menu**: Right-click any node to access its documentation
+*   **Auto-Discovery**: New documentation files are automatically discovered
+*   **FastAPI Endpoints**:
+    *   `/api/docs/registry` - Complete documentation registry
+    *   `/api/docs/content/{node_name}` - Specific node documentation
+    *   `/api/docs/guide/{guide_name}` - Development guides

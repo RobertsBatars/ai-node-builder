@@ -34,7 +34,7 @@ Simple LLM workflow
 
 ### Creating Your Own Nodes
 
-If you want to extend the application with your own custom logic, please refer to the [Node Creation Guide](./node_creation_guide.md) for a detailed walkthrough on how to build new nodes.
+If you want to extend the application with your own custom logic, please refer to the [Node Creation Guide](./docs/guides/node_creation_guide.md) for a detailed walkthrough on how to build new nodes.
 
 ### Testing
 
@@ -47,9 +47,9 @@ This project includes a command-line test runner to verify workflow functionalit
     ```
 The runner will execute all test workflows located in the `/tests` directory.
 
-### Developer Documentation (`devdocs.md`)
+### Developer Documentation (`docs/guides/devdocs.md`)
 
-The `devdocs.md` file in this repository serves two purposes:
+The `docs/guides/devdocs.md` file in this repository serves two purposes:
 1.  It documents the development journey, architectural decisions, and technical challenges of the project.
 2.  It provides essential context for AI assistants to understand the project's structure and goals, enabling them to provide more effective help.
 
