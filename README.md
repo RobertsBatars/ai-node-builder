@@ -30,6 +30,13 @@ Simple LLM workflow
 *   **Select Starting Node:** Before running a workflow, you must select one node to be the starting point. Click on a node to select it.
 *   **Run Workflow:** Click the "RUN" button to execute the workflow.
 
+## Documentation
+
+Access comprehensive node documentation through the built-in documentation system:
+- **📚 Docs Button**: Click the docs button in the main interface to open the documentation web app
+- **Direct Access**: [http://localhost:8000/docs/](http://localhost:8000/docs/)
+- **Context Menu**: Right-click any node to view its specific documentation
+
 ## Development
 
 ### Creating Your Own Nodes
