@@ -139,7 +139,7 @@ When `use_display_context` is enabled:
 - Helps maintain conversation continuity
 
 ### Runtime Memory
-The node maintains conversation history in `self.memory`:
+The node maintains conversation history in `self.memory` when enabled through widget or when processing tool calls:
 - `conversation_history`: Array of message objects
 - `tool_definitions`: Cached tool definitions
 - `processed_tool_results`: Tool execution results
@@ -179,7 +179,7 @@ system_prompt: "You are an expert programmer"
 - Network timeouts are managed gracefully
 
 ## Performance Optimization
-- Conversation history is cached between executions
+- Conversation history is cached between executions (if memory enabled)
 - Tool definitions are reused when possible
 - Context is filtered to reduce token usage
 - Streaming is not currently supported but planned
@@ -222,7 +222,7 @@ model: "llama2:7b"
 ```
 
 ### Multi-turn Conversations
-The node automatically maintains conversation context when `use_runtime_memory` is enabled. Each execution adds to the conversation history.
+The node automatically maintains conversation context when `use_runtime_memory` is enabled. Each execution (within single workflow execution) adds to the conversation history.
 
 ### Dynamic Tool Loading
 Tools can be provided dynamically by connecting different tool nodes to the `tools` array input, allowing for context-dependent tool availability.

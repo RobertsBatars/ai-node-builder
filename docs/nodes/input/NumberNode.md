@@ -41,7 +41,6 @@ Use Number Nodes to set LLM parameters: one Number Node with value 100 connected
 
 ## Common Use Cases
 - **Math Operations**: Provide operands for Add, Subtract, Multiply, Divide nodes
-- **LLM Parameters**: Set temperature, max_tokens, top_p values
 - **Loop Counters**: Define iteration counts for loop-based workflows
 - **Thresholds**: Set comparison values for conditional logic
 - **Configuration**: Store numeric settings and parameters
