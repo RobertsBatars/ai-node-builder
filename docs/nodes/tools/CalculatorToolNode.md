@@ -96,10 +96,11 @@ The calculator handles various error conditions:
 ## Usage Patterns
 
 ### Single Tool Connection
-```
-[Calculator Tool] → [LLM Node.tools]
-```
-Most common pattern for basic math capabilities.
+The most common pattern for basic math capabilities requires two connections:
+1. Calculator Tool output → LLM Node tools input (provides tool definition)
+2. LLM Node tool_calls output → Calculator Tool input (executes tool calls)
+
+This creates a bidirectional flow where the LLM can discover and execute the calculator tool.
 
 ### Multiple Tool Usage
 Connect each tool directly to its own LLM tools input socket (dynamic array) AND connect the LLM's tool_calls output to each tool's input:
