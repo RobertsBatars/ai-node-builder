@@ -28,6 +28,7 @@ class SocketType(Enum):
     TEXT = "TEXT"
     NUMBER = "NUMBER"
     IMAGE = "IMAGE"
+    DICTIONARY = "DICTIONARY"
     ANY = "*"
     # The concept of a dependency is now a property of the socket, not its data type.
 
@@ -135,7 +136,8 @@ class BaseNode(ABC):
         """Get widget value with widget's own default, handling type safety."""
         # First try to get user-provided value
         value = self.widget_values.get(widget_name)
-        if value is not None and value != "":
+        if value is not None:
+            # User has provided input (even if empty) - return their value directly
             return value
             
         # Get the widget definition from the class to get its default

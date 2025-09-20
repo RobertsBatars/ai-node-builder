@@ -202,6 +202,10 @@ The system for defining a node's UI was successful. It avoids the need for separ
 * **Automatic Generation**: On startup, the backend engine inspects each node class, finds these InputWidget declarations, and automatically builds a JSON "UI Blueprint" to send to the frontend.  
 * **Interactive Widgets**: The design supports widgets that can trigger backend functions via a callback property, enabling dynamic UI elements.
 
+### **4.3. Widget Value Handling**
+
+Widgets are initialized with their default values when nodes are added. The `get_widget_value_safe()` method provides type-safe access to widget values with a `None` check for safety.
+
 ## **5. AI and Tool Integration (Current Implementation)**
 
 The application now includes comprehensive AI integration with experimental tool support.

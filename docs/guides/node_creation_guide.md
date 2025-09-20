@@ -63,7 +63,7 @@ Sockets are the connection points on a node for data to flow in and out.
 -   **`INPUT_SOCKETS`**: A dictionary defining the inputs of the node.
 -   **`OUTPUT_SOCKETS`**: A dictionary defining the outputs of the node.
 
-Each socket is defined with a name and a dictionary of properties, the most important being `type`, which uses the `SocketType` enum (`TEXT`, `NUMBER`, `IMAGE`, `ANY`). Sockets can also be configured as dynamic arrays to accept a variable number of inputs.
+Each socket is defined with a name and a dictionary of properties, the most important being `type`, which uses the `SocketType` enum (`TEXT`, `NUMBER`, `IMAGE`, `DICTIONARY`, `ANY`). Sockets can also be configured as dynamic arrays to accept a variable number of inputs.
 
 ### Data Flow: Push vs. Pull (Dependency)
 
@@ -93,7 +93,23 @@ What happens if you set both `is_dependency: True` and `do_not_wait: True` on th
 
 Widgets are UI elements that appear on the node in the frontend, allowing users to input static values. They are defined as class attributes using the `InputWidget` class from `core.definitions`. In your `execute()` method, access widget values using `self.get_widget_value_safe('widget_name', expected_type)` which automatically uses the widget's default value if no user value is provided.
 
-For a complete list of available widgets and their properties, see [section 3](#3-available-widgets-and-properties).
+#### Widget Value Behavior
+
+Widgets automatically get their default values when nodes are added. Use `get_widget_value_safe()` to access widget values safely:
+
+```python
+def execute(self):
+    user_input = self.get_widget_value_safe('my_widget', str)
+    
+    if not user_input or user_input.strip() == "":
+        await self.send_message_to_client(MessageType.ERROR, 
+                                        {"message": "Field cannot be empty"})
+        return
+    
+    return (user_input,)
+```
+
+For a complete list of available widgets and their properties, see [section 4](#4-available-widgets-and-properties).
 
 ---
 
@@ -167,7 +183,33 @@ That's it! Save the `custom_nodes.py` file. The next time you run the applicatio
 
 ---
 
-## 3. Available Widgets and Properties
+## 3. Socket Types
+
+The application supports several socket types for different kinds of data:
+
+| Socket Type | Description | Use Cases |
+|-------------|-------------|-----------|
+| `SocketType.TEXT` | String data | Text processing, messages, JSON strings |
+| `SocketType.NUMBER` | Numeric data (int/float) | Mathematical operations, counts, measurements |
+| `SocketType.IMAGE` | Image data | Image processing, computer vision |
+| `SocketType.DICTIONARY` | Dictionary data | Key-value data structures, configuration objects |
+| `SocketType.ANY` | Any data type | Generic processing, flexible nodes |
+
+### Dictionary Socket Type
+
+The `DICTIONARY` socket type is designed for structured key-value data where:
+- **Keys** must be strings
+- **Values** can be strings, integers, or floats
+- Data is JSON-serializable for frontend display
+
+Example dictionary nodes:
+- `DictionaryInputNode`: Creates dictionaries from JSON input
+- `DictionaryGetElementNode`: Retrieves values by key
+- `DictionarySetElementNode`: Sets/updates dictionary elements
+
+---
+
+## 4. Available Widgets and Properties
 
 The frontend determines which UI widgets to render based on the `widget_type` string. Here are the currently supported types:
 
@@ -192,7 +234,7 @@ mode_selection = InputWidget(widget_type="COMBO", default="Option A", properties
 enable_feature = InputWidget(widget_type="BOOLEAN", default=True)
 ```
 
-## 4. Dynamic Sockets: Arrays
+## 5. Dynamic Sockets: Arrays
 
 The engine supports a powerful feature called **dynamic array sockets**. This allows you to create inputs and outputs that can accept a variable number of connections. In the UI, this appears as a per-array `+` and `-` button on the node, letting the user add or remove slots of the same type.
 
@@ -252,7 +294,7 @@ class SplitTextNode(BaseNode):
 -   **For outputs**, the corresponding return value from your `execute` method must be a Python `list`.
 -   The `is_dependency` flag is often useful for array inputs to ensure all connected data is available before execution if the connected data nodes are not expected to push data on their own.
 
-## 5. Skipping Outputs for Conditional Logic
+## 6. Skipping Outputs for Conditional Logic
 
 For creating nodes that control the flow of the graph (e.g., routing data based on a condition), you can instruct the engine to skip an output. This prevents any downstream nodes connected to that output from executing.
 
@@ -294,7 +336,7 @@ The `DecisionNode` in `conditional_nodes.py` is another great example of this, w
 
 ---
 
-## 6. Asynchronous Nodes
+## 7. Asynchronous Nodes
 
 The engine supports nodes that perform non-blocking operations, such as waiting for a timer or making an external API call. This is achieved by defining the `execute` method as an `async` function.
 
@@ -359,7 +401,7 @@ class WaitNode(BaseNode):
 
 ---
 
-## 7. Dynamic Socket Configuration and Loops
+## 8. Dynamic Socket Configuration and Loops
 
 Nodes can dynamically modify their socket behavior in two ways: during initialization in the `load()` method, and during execution via the return value. This enables powerful runtime behavior customization and loop creation.
 
@@ -546,7 +588,7 @@ This dynamic socket configuration system enables creating highly flexible nodes 
 
 ---
 
-## 8. Sending Messages to the Client
+## 9. Sending Messages to the Client
 
 Nodes have a built-in, structured way to send messages directly to the connected client (e.g., the frontend UI or a test runner). This is useful for logging, debugging, or sending custom events to trigger UI updates, without using an output socket.
 
@@ -634,7 +676,7 @@ class LoggingProcessorNode(BaseNode):
 
 ---
 
-## 9. Creating Event Nodes
+## 10. Creating Event Nodes
 
 Event nodes are a special category of nodes that, instead of being triggered by an input, listen for an external event (like a webhook, message queue, or user input) and start a new workflow run when that event occurs. This enables powerful features like parallel workflow execution and integration with external systems.
 
@@ -776,7 +818,7 @@ The `DisplayInputEventNode` is a special event node that enables chat-like inter
 
 ---
 
-## 10. Creating Tool Nodes for LLM Integration
+## 11. Creating Tool Nodes for LLM Integration
 
 Tool nodes are special nodes designed to work with the `LLMNode`'s **fully tested and functional** tool calling system. They follow **Model Context Protocol (MCP)**-inspired patterns and operate in dual modes to support AI tool calling workflows.
 
@@ -1016,7 +1058,7 @@ To use your tool nodes with the LLM node:
 
 The LLM node handles all the complex routing, message sequencing, and OpenAI API compatibility automatically. This system has been thoroughly tested with multiple tool types and complex tool calling scenarios.
 
-## 11. File Management
+## 12. File Management
 
 The system includes a centralized file management system through the `ServableFileManager` class, which handles file storage and automatic serving with CORS support.
 
@@ -1057,7 +1099,7 @@ class MyFileProcessingNode(BaseNode):
 - Return both the servable URL and filename for downstream processing
 - Use base64 encoding for embedding files directly in JSON responses when needed
 
-## 12. Event Communication Nodes
+## 13. Event Communication Nodes
 
 The system includes specialized nodes for inter-workflow communication, enabling parallel workflow coordination and data exchange:
 
@@ -1113,7 +1155,7 @@ class ReceiveEventNode(EventNode):
 - Include proper error handling and timeout logic for await operations
 - Follow the established pattern: Send → Receive → Process → Return
 
-## 13. Best Practices and Considerations
+## 14. Best Practices and Considerations
 
 - **Keep Nodes Atomic**: Each node should perform a single, clear task. Instead of one giant node that does three things, create three smaller nodes. This makes your workflows more flexible and easier to debug.
 - **Initialize Memory**: When using stateful nodes, it is best practice to initialize all expected keys for `self.memory` in the `load()` method. This prevents potential `KeyError` exceptions and makes the node's expected state clear.
