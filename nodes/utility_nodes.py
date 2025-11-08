@@ -157,29 +157,35 @@ class ImageLinkExtractNode(BaseNode):
 
 class StringArrayCreatorNode(BaseNode):
     """
-    Converts dynamic inputs into a single flattened string array.
+    Converts dynamic inputs into a single flattened array or dictionary array.
     Handles both single values and arrays, flattening arrays properly.
-    
+
     Widget Controls:
     - wait_toggle: If false, inputs use do_not_wait behavior
-    - dependency_toggle: If false, inputs don't use dependency behavior  
+    - dependency_toggle: If false, inputs don't use dependency behavior
     - single_item_passthrough: If true and only one item, output single item instead of array
     - accumulate: If true, accumulates all inputs; if false, only uses the latest input
+    - output_as_dict_array: If true, converts each element to dictionary with specified key
+    - dict_key_name: Key name for dictionary array elements
     """
     CATEGORY = "Utility"
-    
+
     INPUT_SOCKETS = {
         "inputs": {"type": SocketType.ANY, "array": True, "is_dependency": True}
     }
     OUTPUT_SOCKETS = {
         "string_array": {"type": SocketType.ANY}
     }
-    
+
     # Widget controls for socket behavior
     wait_toggle = InputWidget(widget_type="BOOLEAN", default=True)
-    dependency_toggle = InputWidget(widget_type="BOOLEAN", default=True) 
+    dependency_toggle = InputWidget(widget_type="BOOLEAN", default=True)
     single_item_passthrough = InputWidget(widget_type="BOOLEAN", default=True)
     accumulate = InputWidget(widget_type="BOOLEAN", default=False)
+
+    # NEW: Dictionary array output
+    output_as_dict_array = InputWidget(widget_type="BOOLEAN", default=False)
+    dict_key_name = InputWidget(widget_type="TEXT", default="value")
 
     def load(self):
         # Get widget values for socket configuration
@@ -207,23 +213,26 @@ class StringArrayCreatorNode(BaseNode):
 
     def execute(self, inputs):
         """
-        Processes inputs into a single array.
-        
+        Processes inputs into a single array or dictionary array.
+
         With accumulate=True: Flattens all inputs into a single array
         With accumulate=False: Only uses the latest/newest input, ignoring accumulated data
-        
+
         If input[i] is already an array: extend result with input[i] contents
         If input[i] is single value: append input[i] to result
-        
+
         With single_item_passthrough=True: if only one item in result, output single item instead of array
+        With output_as_dict_array=True: converts each element to dictionary with specified key
         """
         if not inputs:
             return ([],)
-        
+
         # Get widget settings
         should_accumulate = self.widget_values.get('accumulate', self.accumulate.default)
         single_passthrough = self.widget_values.get('single_item_passthrough', self.single_item_passthrough.default)
-        
+        output_as_dict = self.widget_values.get('output_as_dict_array', self.output_as_dict_array.default)
+        key_name = self.widget_values.get('dict_key_name', self.dict_key_name.default)
+
         # Determine which inputs to process
         if should_accumulate:
             # Use all inputs (original behavior)
@@ -233,7 +242,7 @@ class StringArrayCreatorNode(BaseNode):
             # Only use the latest input (non-accumulating behavior)
             inputs_to_process = [inputs[-1]] if inputs else []
             print(f"StringArrayCreatorNode: Using only latest input (non-accumulating mode)")
-        
+
         result = []
         for item in inputs_to_process:
             if isinstance(item, (list, tuple)):
@@ -242,8 +251,23 @@ class StringArrayCreatorNode(BaseNode):
             else:
                 # Single value, append to result
                 result.append(item)
-        
-        # If single_item_passthrough is enabled and we have exactly one item, output it directly
+
+        # Convert to dictionary array if requested
+        if output_as_dict:
+            # Ensure key_name is valid
+            if not key_name or key_name.strip() == "":
+                key_name = "value"  # Fallback to default
+
+            dict_array = [{key_name: item} for item in result]
+
+            if single_passthrough and len(dict_array) == 1:
+                print(f"StringArrayCreatorNode: Single dict passthrough - outputting {dict_array[0]} directly")
+                return (dict_array[0],)
+            else:
+                print(f"StringArrayCreatorNode: Outputting dictionary array with {len(dict_array)} items")
+                return (dict_array,)
+
+        # Original behavior (backward compatible)
         if single_passthrough and len(result) == 1:
             print(f"StringArrayCreatorNode: Single item passthrough - outputting {result[0]} directly")
             return (result[0],)
