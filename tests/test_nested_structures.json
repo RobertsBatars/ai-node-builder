@@ -1,7 +1,7 @@
 {
   "graph_data": {
-    "last_node_id": 9,
-    "last_link_id": 9,
+    "last_node_id": 12,
+    "last_link_id": 12,
     "nodes": [
       {
         "id": 1,
@@ -109,7 +109,7 @@
           {
             "name": "value",
             "type": "*",
-            "links": [6],
+            "links": [6, 10],
             "slot_index": 0
           },
           {
@@ -261,6 +261,94 @@
         "properties": {},
         "widgets_values": ["LOG"],
         "title": "Log First User"
+      },
+      {
+        "id": 10,
+        "type": "Dictionary/ArrayElementGetNode",
+        "pos": [1480, 300],
+        "size": {"0": 220, "1": 80},
+        "flags": {},
+        "order": 9,
+        "mode": 0,
+        "inputs": [
+          {
+            "name": "array_in",
+            "type": "*",
+            "link": 10
+          }
+        ],
+        "outputs": [
+          {
+            "name": "element",
+            "type": "*",
+            "links": [11],
+            "slot_index": 0
+          },
+          {
+            "name": "error",
+            "type": "TEXT",
+            "links": null
+          }
+        ],
+        "properties": {},
+        "widgets_values": [0, true],
+        "title": "Get First Score"
+      },
+      {
+        "id": 11,
+        "type": "Input/NumberNode",
+        "pos": [1480, 420],
+        "size": {"0": 220, "1": 58},
+        "flags": {},
+        "order": 10,
+        "mode": 0,
+        "outputs": [
+          {
+            "name": "number_out",
+            "type": "NUMBER",
+            "links": [12],
+            "slot_index": 0
+          }
+        ],
+        "properties": {},
+        "widgets_values": [95],
+        "title": "Expected First Score"
+      },
+      {
+        "id": 12,
+        "type": "Testing/AssertNode",
+        "pos": [1780, 350],
+        "size": {"0": 180, "1": 60},
+        "flags": {},
+        "order": 11,
+        "mode": 0,
+        "inputs": [
+          {
+            "name": "actual",
+            "type": "*",
+            "link": 11
+          },
+          {
+            "name": "expected",
+            "type": "*",
+            "link": 12
+          }
+        ],
+        "outputs": [
+          {
+            "name": "on_success",
+            "type": "*",
+            "links": null
+          },
+          {
+            "name": "on_failure",
+            "type": "*",
+            "links": null
+          }
+        ],
+        "properties": {},
+        "widgets_values": [],
+        "title": "Assert Score = 95"
       }
     ],
     "links": [
@@ -272,7 +360,10 @@
       [6, 4, 0, 5, 0, "*"],
       [7, 5, 0, 7, 0, "NUMBER"],
       [8, 6, 0, 7, 1, "NUMBER"],
-      [9, 7, 0, null, null, "*"]
+      [9, 7, 0, null, null, "*"],
+      [10, 4, 0, 10, 0, "*"],
+      [11, 10, 0, 12, 0, "*"],
+      [12, 11, 0, 12, 1, "NUMBER"]
     ],
     "groups": [],
     "config": {},

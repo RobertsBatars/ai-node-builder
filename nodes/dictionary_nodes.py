@@ -604,3 +604,65 @@ class ArrayToStringNode(BaseNode):
             error_msg = f"Conversion error: {str(e)}"
             await self.send_message_to_client(MessageType.ERROR, {"message": error_msg})
             return (SKIP_OUTPUT, error_msg)
+
+
+class ArrayToDictionaryNode(BaseNode):
+    """
+    Wraps an array in a dictionary with a specified key name.
+    Converts array format [1, 2, 3] to dictionary format {"items": [1, 2, 3]}.
+    This node is useful for converting plain arrays into the dictionary format expected by dictionary nodes.
+    """
+    CATEGORY = "Dictionary"
+
+    INPUT_SOCKETS = {
+        "array_in": {"type": SocketType.ANY, "is_dependency": True}
+    }
+    OUTPUT_SOCKETS = {
+        "dictionary_out": {"type": SocketType.DICTIONARY},
+        "error": {"type": SocketType.TEXT}
+    }
+
+    key_name = InputWidget(
+        widget_type="TEXT",
+        default="items",
+        properties={"placeholder": "Key name for array"}
+    )
+
+    def load(self):
+        pass
+
+    async def execute(self, array_in):
+        try:
+            # Get the key name from widget
+            key = self.get_widget_value_safe('key_name', str)
+            if not key:
+                error_msg = "Key name cannot be empty"
+                await self.send_message_to_client(MessageType.ERROR, {"message": error_msg})
+                return (SKIP_OUTPUT, error_msg)
+
+            # Validate that key is a valid string (no special characters that would break JSON)
+            if not isinstance(key, str) or not key.strip():
+                error_msg = "Key name must be a non-empty string"
+                await self.send_message_to_client(MessageType.ERROR, {"message": error_msg})
+                return (SKIP_OUTPUT, error_msg)
+
+            # Validate that input is an array
+            if not isinstance(array_in, (list, tuple)):
+                error_msg = f"Input must be an array, got {type(array_in).__name__}"
+                await self.send_message_to_client(MessageType.ERROR, {"message": error_msg})
+                return (SKIP_OUTPUT, error_msg)
+
+            # Create dictionary with array
+            result = {key.strip(): list(array_in)}
+
+            await self.send_message_to_client(
+                MessageType.DEBUG,
+                {"message": f"Wrapped array of length {len(array_in)} in dictionary with key '{key.strip()}'"}
+            )
+
+            return (result, SKIP_OUTPUT)
+
+        except Exception as e:
+            error_msg = f"Conversion error: {str(e)}"
+            await self.send_message_to_client(MessageType.ERROR, {"message": error_msg})
+            return (SKIP_OUTPUT, error_msg)
