@@ -24,7 +24,6 @@
           "{\"name\": \"Alice\", \"scores\": [95, 87, 92], \"tags\": [\"admin\", \"premium\"], \"active\": true}",
           10
         ],
-        "title": "Create Dictionary with Arrays"
       },
       {
         "id": 2,
@@ -56,7 +55,6 @@
         ],
         "properties": {},
         "widgets_values": ["scores"],
-        "title": "Get Scores Array"
       },
       {
         "id": 3,
@@ -88,7 +86,6 @@
         ],
         "properties": {},
         "widgets_values": [],
-        "title": "Get Array Length"
       },
       {
         "id": 4,
@@ -108,7 +105,6 @@
         ],
         "properties": {},
         "widgets_values": [3],
-        "title": "Expected Length"
       },
       {
         "id": 5,
@@ -144,7 +140,6 @@
         ],
         "properties": {},
         "widgets_values": [],
-        "title": "Assert Length = 3"
       },
       {
         "id": 6,
@@ -170,7 +165,6 @@
         ],
         "properties": {},
         "widgets_values": ["LOG"],
-        "title": "Log Original Dictionary"
       }
     ],
     "links": [

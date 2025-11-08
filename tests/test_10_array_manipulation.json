@@ -21,10 +21,9 @@
         ],
         "properties": {},
         "widgets_values": [
-          "{\"items\": [1, 2, 3, 4, 5]}",
+          "{\"numbers\": [10, 20, 30]}",
           10
         ],
-        "title": "Create Initial Array"
       },
       {
         "id": 2,
@@ -55,54 +54,28 @@
           }
         ],
         "properties": {},
-        "widgets_values": ["items"],
-        "title": "Get Array"
+        "widgets_values": ["numbers"],
       },
       {
         "id": 3,
-        "type": "Input/NumberNode",
-        "pos": [480, 280],
-        "size": {"0": 240, "1": 58},
+        "type": "Dictionary/ArrayElementGetNode",
+        "pos": [800, 100],
+        "size": {"0": 220, "1": 80},
         "flags": {},
         "order": 2,
-        "mode": 0,
-        "outputs": [
-          {
-            "name": "number_out",
-            "type": "NUMBER",
-            "links": [3],
-            "slot_index": 0
-          }
-        ],
-        "properties": {},
-        "widgets_values": [99],
-        "title": "Value to Append"
-      },
-      {
-        "id": 4,
-        "type": "Dictionary/ArrayAppendNode",
-        "pos": [800, 180],
-        "size": {"0": 240, "1": 80},
-        "flags": {},
-        "order": 3,
         "mode": 0,
         "inputs": [
           {
             "name": "array_in",
             "type": "*",
             "link": 2
-          },
-          {
-            "name": "value",
-            "type": "*",
-            "link": 3
           }
         ],
         "outputs": [
           {
-            "name": "updated_array",
+            "name": "element",
             "type": "*",
-            "links": [4],
+            "links": [3],
             "slot_index": 0
           },
           {
@@ -112,46 +85,68 @@
           }
         ],
         "properties": {},
-        "widgets_values": ["end"],
-        "title": "Append to End"
+        "widgets_values": [1, true],
+      },
+      {
+        "id": 4,
+        "type": "Input/NumberNode",
+        "pos": [800, 250],
+        "size": {"0": 220, "1": 58},
+        "flags": {},
+        "order": 3,
+        "mode": 0,
+        "outputs": [
+          {
+            "name": "number_out",
+            "type": "NUMBER",
+            "links": [4],
+            "slot_index": 0
+          }
+        ],
+        "properties": {},
+        "widgets_values": [20],
       },
       {
         "id": 5,
-        "type": "Dictionary/ArrayLengthNode",
-        "pos": [1120, 140],
-        "size": {"0": 200, "1": 60},
+        "type": "Testing/AssertNode",
+        "pos": [1100, 150],
+        "size": {"0": 180, "1": 60},
         "flags": {},
         "order": 4,
         "mode": 0,
         "inputs": [
           {
-            "name": "array_in",
+            "name": "actual",
+            "type": "*",
+            "link": 3
+          },
+          {
+            "name": "expected",
             "type": "*",
             "link": 4
           }
         ],
         "outputs": [
           {
-            "name": "length",
-            "type": "NUMBER",
+            "name": "on_success",
+            "type": "*",
             "links": [5],
             "slot_index": 0
           },
           {
-            "name": "error",
-            "type": "TEXT",
+            "name": "on_failure",
+            "type": "*",
             "links": null
           }
         ],
         "properties": {},
         "widgets_values": [],
-        "title": "Check New Length"
       },
       {
         "id": 6,
         "type": "Input/NumberNode",
-        "pos": [1120, 260],
-        "size": {"0": 200, "1": 58},
+        "pos": [1100, 350],
+        "size": {"0": 180, "1": 58},
         "flags": {},
         "order": 5,
         "mode": 0,
@@ -164,64 +159,62 @@
           }
         ],
         "properties": {},
-        "widgets_values": [6],
-        "title": "Expected Length"
+        "widgets_values": [99],
       },
       {
         "id": 7,
-        "type": "Testing/AssertNode",
-        "pos": [1400, 180],
-        "size": {"0": 180, "1": 60},
+        "type": "Dictionary/DictionaryGetElementNode",
+        "pos": [100, 400],
+        "size": {"0": 240, "1": 80},
         "flags": {},
         "order": 6,
         "mode": 0,
         "inputs": [
           {
-            "name": "actual",
-            "type": "*",
+            "name": "dictionary",
+            "type": "DICTIONARY",
             "link": 5
-          },
-          {
-            "name": "expected",
-            "type": "*",
-            "link": 6
           }
         ],
         "outputs": [
           {
-            "name": "on_success",
+            "name": "value",
             "type": "*",
             "links": [7],
             "slot_index": 0
           },
           {
-            "name": "on_failure",
-            "type": "*",
+            "name": "error",
+            "type": "TEXT",
             "links": null
           }
         ],
         "properties": {},
-        "widgets_values": [],
-        "title": "Assert Length = 6"
+        "widgets_values": ["numbers"],
       },
       {
         "id": 8,
-        "type": "Dictionary/DictionaryGetElementNode",
-        "pos": [100, 450],
+        "type": "Dictionary/ArrayElementSetNode",
+        "pos": [420, 400],
         "size": {"0": 240, "1": 80},
         "flags": {},
         "order": 7,
         "mode": 0,
         "inputs": [
           {
-            "name": "dictionary",
-            "type": "DICTIONARY",
+            "name": "array_in",
+            "type": "*",
             "link": 7
+          },
+          {
+            "name": "value",
+            "type": "*",
+            "link": 6
           }
         ],
         "outputs": [
           {
-            "name": "value",
+            "name": "updated_array",
             "type": "*",
             "links": [8],
             "slot_index": 0
@@ -233,14 +226,13 @@
           }
         ],
         "properties": {},
-        "widgets_values": ["items"],
-        "title": "Get Extended Array"
+        "widgets_values": [1, true],
       },
       {
         "id": 9,
-        "type": "Dictionary/ArraySliceNode",
-        "pos": [420, 450],
-        "size": {"0": 240, "1": 100},
+        "type": "Dictionary/ArrayElementGetNode",
+        "pos": [740, 400],
+        "size": {"0": 220, "1": 80},
         "flags": {},
         "order": 8,
         "mode": 0,
@@ -253,7 +245,7 @@
         ],
         "outputs": [
           {
-            "name": "sliced_array",
+            "name": "element",
             "type": "*",
             "links": [9],
             "slot_index": 0
@@ -265,79 +257,45 @@
           }
         ],
         "properties": {},
-        "widgets_values": [0, 3, 1],
-        "title": "Slice [0:3]"
+        "widgets_values": [1, true],
       },
       {
         "id": 10,
-        "type": "Dictionary/ArrayLengthNode",
-        "pos": [740, 450],
-        "size": {"0": 200, "1": 60},
+        "type": "Input/NumberNode",
+        "pos": [740, 550],
+        "size": {"0": 220, "1": 58},
         "flags": {},
         "order": 9,
-        "mode": 0,
-        "inputs": [
-          {
-            "name": "array_in",
-            "type": "*",
-            "link": 9
-          }
-        ],
-        "outputs": [
-          {
-            "name": "length",
-            "type": "NUMBER",
-            "links": [10],
-            "slot_index": 0
-          },
-          {
-            "name": "error",
-            "type": "TEXT",
-            "links": null
-          }
-        ],
-        "properties": {},
-        "widgets_values": [],
-        "title": "Check Slice Length"
-      },
-      {
-        "id": 11,
-        "type": "Input/NumberNode",
-        "pos": [740, 570],
-        "size": {"0": 200, "1": 58},
-        "flags": {},
-        "order": 10,
         "mode": 0,
         "outputs": [
           {
             "name": "number_out",
             "type": "NUMBER",
-            "links": [11],
+            "links": [10],
             "slot_index": 0
           }
         ],
         "properties": {},
-        "widgets_values": [3],
-        "title": "Expected Slice Length"
+        "widgets_values": [99],
       },
       {
-        "id": 12,
+        "id": 11,
         "type": "Testing/AssertNode",
-        "pos": [1020, 490],
+        "pos": [1040, 450],
         "size": {"0": 180, "1": 60},
         "flags": {},
-        "order": 11,
+        "order": 10,
         "mode": 0,
         "inputs": [
           {
             "name": "actual",
             "type": "*",
-            "link": 10
+            "link": 9
           },
           {
             "name": "expected",
             "type": "*",
-            "link": 11
+            "link": 10
           }
         ],
         "outputs": [
@@ -354,21 +312,19 @@
         ],
         "properties": {},
         "widgets_values": [],
-        "title": "Assert Slice = 3"
       }
     ],
     "links": [
       [1, 1, 0, 2, 0, "DICTIONARY"],
-      [2, 2, 0, 4, 0, "*"],
-      [3, 3, 0, 4, 1, "*"],
-      [4, 4, 0, 5, 0, "*"],
-      [5, 5, 0, 7, 0, "NUMBER"],
-      [6, 6, 0, 7, 1, "NUMBER"],
-      [7, 7, 0, 8, 0, "DICTIONARY"],
+      [2, 2, 0, 3, 0, "*"],
+      [3, 3, 0, 5, 0, "*"],
+      [4, 4, 0, 5, 1, "*"],
+      [5, 5, 0, 7, 0, "DICTIONARY"],
+      [6, 6, 0, 8, 1, "*"],
+      [7, 7, 0, 8, 0, "*"],
       [8, 8, 0, 9, 0, "*"],
-      [9, 9, 0, 10, 0, "*"],
-      [10, 10, 0, 12, 0, "NUMBER"],
-      [11, 11, 0, 12, 1, "NUMBER"]
+      [9, 9, 0, 11, 0, "*"],
+      [10, 10, 0, 11, 1, "*"]
     ],
     "groups": [],
     "config": {},

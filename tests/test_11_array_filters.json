@@ -24,7 +24,6 @@
           "{\"mixed\": [1, \"text\", 2, null, 3, \"\", 4]}",
           10
         ],
-        "title": "Create Mixed Array"
       },
       {
         "id": 2,
@@ -56,7 +55,6 @@
         ],
         "properties": {},
         "widgets_values": ["mixed"],
-        "title": "Get Mixed Array"
       },
       {
         "id": 3,
@@ -88,7 +86,6 @@
         ],
         "properties": {},
         "widgets_values": ["numeric_only"],
-        "title": "Filter Numeric Only"
       },
       {
         "id": 4,
@@ -120,7 +117,6 @@
         ],
         "properties": {},
         "widgets_values": [],
-        "title": "Get Filtered Length"
       },
       {
         "id": 5,
@@ -140,7 +136,6 @@
         ],
         "properties": {},
         "widgets_values": [4],
-        "title": "Expected Count"
       },
       {
         "id": 6,
@@ -176,7 +171,6 @@
         ],
         "properties": {},
         "widgets_values": [],
-        "title": "Assert Length = 4"
       },
       {
         "id": 7,
@@ -208,7 +202,6 @@
         ],
         "properties": {},
         "widgets_values": ["json", ", ", true],
-        "title": "Convert to JSON"
       },
       {
         "id": 8,
@@ -234,7 +227,6 @@
         ],
         "properties": {},
         "widgets_values": ["LOG"],
-        "title": "Log Filtered JSON"
       }
     ],
     "links": [
