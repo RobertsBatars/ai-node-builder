@@ -111,6 +111,37 @@ def execute(self):
 
 For a complete list of available widgets and their properties, see [section 4](#4-available-widgets-and-properties).
 
+### Optional Inputs
+
+By default, all inputs defined in `INPUT_SOCKETS` are **required**. If a required input socket is not connected, the engine will raise an error when trying to execute the node.
+
+To make an input optional, add a default parameter value in your `execute` method:
+
+```python
+# Required input (will error if not connected)
+def execute(self, text):
+    return (f"Text: {text}",)
+
+# Optional input (works even if not connected)
+def execute(self, text=None):
+    if text is None:
+        return ("No input provided",)
+    return (f"Text: {text}",)
+```
+
+**How it works:**
+- The engine only passes arguments for connected inputs
+- Python requires all parameters without defaults to be provided
+- Parameters with defaults (`=None`) become optional
+- Unconnected optional inputs receive their default value (typically `None`)
+
+**Error example:** Without a default parameter, an unconnected input produces:
+```
+Error: execute() missing 1 required positional argument: 'text'
+```
+
+**Common pattern:** Check for `None` to handle both connected and unconnected cases gracefully.
+
 ---
 
 ## 2. Step-by-Step Tutorial: Creating a "Concatenate" Node
@@ -1159,7 +1190,7 @@ class ReceiveEventNode(EventNode):
 
 - **Keep Nodes Atomic**: Each node should perform a single, clear task. Instead of one giant node that does three things, create three smaller nodes. This makes your workflows more flexible and easier to debug.
 - **Initialize Memory**: When using stateful nodes, it is best practice to initialize all expected keys for `self.memory` in the `load()` method. This prevents potential `KeyError` exceptions and makes the node's expected state clear.
-- **Handle Missing Inputs**: In your `execute` method, consider what should happen if an optional input is not connected. The argument will be `None` in that case.
+- **Handle Optional Inputs**: Use default parameters (e.g., `input=None`) to make inputs optional. See the [Optional Inputs](#optional-inputs) section for details on how this works.
 - **Return a Tuple**: The `execute` method **must** return a tuple for its outputs, even if there is only one. For a single output, return `(my_value,)`. For no outputs, return `()`. To conditionally prevent an output from firing, return the `SKIP_OUTPUT` object in its place in the tuple.
 - **Clear Naming**: Use descriptive names for your node class, sockets, and widgets. This makes the system easier to use for everyone.
 - **Check the Frontend**: Remember that the `widget_type` you specify in the backend must have a corresponding implementation in `web/index.html` to render correctly.
