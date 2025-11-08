@@ -606,6 +606,54 @@ class ArrayToStringNode(BaseNode):
             return (SKIP_OUTPUT, error_msg)
 
 
+class ValidateDictionaryNode(BaseNode):
+    """
+    Validates that the input is a dictionary and outputs it if valid.
+    Useful for ensuring type safety before passing data to nodes that expect dictionaries.
+    This is especially helpful after assert nodes or other operations where you need
+    to ensure the data type is correct.
+    """
+    CATEGORY = "Dictionary"
+
+    INPUT_SOCKETS = {
+        "value_in": {"type": SocketType.ANY, "is_dependency": True}
+    }
+    OUTPUT_SOCKETS = {
+        "dictionary_out": {"type": SocketType.DICTIONARY},
+        "error": {"type": SocketType.TEXT}
+    }
+
+    def load(self):
+        pass
+
+    async def execute(self, value_in):
+        try:
+            # Check if input is a dictionary
+            if not isinstance(value_in, dict):
+                error_msg = f"Input must be a dictionary, got {type(value_in).__name__}"
+                await self.send_message_to_client(MessageType.ERROR, {"message": error_msg})
+                return (SKIP_OUTPUT, error_msg)
+
+            # Validate that all keys are strings (required for valid dictionary)
+            non_string_keys = [k for k in value_in.keys() if not isinstance(k, str)]
+            if non_string_keys:
+                error_msg = f"Dictionary keys must be strings, found non-string keys: {non_string_keys}"
+                await self.send_message_to_client(MessageType.ERROR, {"message": error_msg})
+                return (SKIP_OUTPUT, error_msg)
+
+            await self.send_message_to_client(
+                MessageType.DEBUG,
+                {"message": f"Valid dictionary with {len(value_in)} keys"}
+            )
+
+            return (value_in, SKIP_OUTPUT)
+
+        except Exception as e:
+            error_msg = f"Validation error: {str(e)}"
+            await self.send_message_to_client(MessageType.ERROR, {"message": error_msg})
+            return (SKIP_OUTPUT, error_msg)
+
+
 class ArrayToDictionaryNode(BaseNode):
     """
     Wraps an array in a dictionary with a specified key name.

@@ -6,12 +6,17 @@ class AssertNode(BaseNode):
     """
     A node to assert that a value matches an expected value.
     Crucial for automated testing of workflows.
+
+    The 'passthrough' input allows you to specify what value continues in the workflow
+    after a successful assertion. If not provided, the 'actual' value is passed through.
+    This enables testing intermediate values while continuing the workflow with different data.
     """
     CATEGORY = "Testing"
 
     INPUT_SOCKETS = {
         "actual": {"type": SocketType.ANY},
-        "expected": {"type": SocketType.ANY, "is_dependency": True}
+        "expected": {"type": SocketType.ANY, "is_dependency": True},
+        "passthrough": {"type": SocketType.ANY, "is_dependency": True}
     }
     OUTPUT_SOCKETS = {
         "on_success": {"type": SocketType.ANY},
@@ -21,10 +26,11 @@ class AssertNode(BaseNode):
     def load(self):
         pass
 
-    async def execute(self, actual, expected):
+    async def execute(self, actual, expected, passthrough=None):
         """
         Compares the 'actual' and 'expected' inputs.
         Raises an exception if they do not match.
+        On success, outputs the 'passthrough' value if provided, otherwise outputs 'actual'.
         """
         # Attempt to cast to float for numerical comparison if possible
         try:
@@ -49,7 +55,9 @@ class AssertNode(BaseNode):
 
         if is_match:
             print("  Result: SUCCESS")
-            return (actual, SKIP_OUTPUT)  # Pass value to on_success
+            # Output passthrough value if provided, otherwise output actual value
+            output_value = passthrough if passthrough is not None else actual
+            return (output_value, SKIP_OUTPUT)
         else:
             print("  Result: FAILURE")
             # The exception remains the primary failure mechanism for the engine
