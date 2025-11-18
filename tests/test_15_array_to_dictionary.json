@@ -1,0 +1,218 @@
+{
+  "graph_data": {
+    "last_node_id": 5,
+    "last_link_id": 5,
+    "nodes": [
+      {
+        "id": 1,
+        "type": "Utility/StringArrayCreatorNode",
+        "pos": [100, 150],
+        "size": {"0": 240, "1": 80},
+        "flags": {},
+        "order": 0,
+        "mode": 0,
+        "outputs": [
+          {
+            "name": "array_out",
+            "type": "*",
+            "links": [1],
+            "slot_index": 0
+          }
+        ],
+        "properties": {},
+        "widgets_values": ["apple,banana,cherry", "comma"]
+      },
+      {
+        "id": 2,
+        "type": "Dictionary/ArrayToDictionaryNode",
+        "pos": [420, 150],
+        "size": {"0": 240, "1": 80},
+        "flags": {},
+        "order": 1,
+        "mode": 0,
+        "inputs": [
+          {
+            "name": "array_in",
+            "type": "*",
+            "link": 1
+          }
+        ],
+        "outputs": [
+          {
+            "name": "dictionary_out",
+            "type": "DICTIONARY",
+            "links": [2],
+            "slot_index": 0
+          },
+          {
+            "name": "error",
+            "type": "TEXT",
+            "links": null
+          }
+        ],
+        "properties": {},
+        "widgets_values": ["items"]
+      },
+      {
+        "id": 3,
+        "type": "Dictionary/ValidateDictionaryNode",
+        "pos": [740, 150],
+        "size": {"0": 240, "1": 80},
+        "flags": {},
+        "order": 2,
+        "mode": 0,
+        "inputs": [
+          {
+            "name": "value_in",
+            "type": "*",
+            "link": 2
+          }
+        ],
+        "outputs": [
+          {
+            "name": "dictionary_out",
+            "type": "DICTIONARY",
+            "links": [3],
+            "slot_index": 0
+          },
+          {
+            "name": "error",
+            "type": "TEXT",
+            "links": null
+          }
+        ],
+        "properties": {},
+        "widgets_values": []
+      },
+      {
+        "id": 4,
+        "type": "Dictionary/DictionaryGetElementNode",
+        "pos": [1060, 150],
+        "size": {"0": 240, "1": 80},
+        "flags": {},
+        "order": 3,
+        "mode": 0,
+        "inputs": [
+          {
+            "name": "dictionary",
+            "type": "DICTIONARY",
+            "link": 3
+          }
+        ],
+        "outputs": [
+          {
+            "name": "value",
+            "type": "*",
+            "links": [4],
+            "slot_index": 0
+          },
+          {
+            "name": "error",
+            "type": "TEXT",
+            "links": null
+          }
+        ],
+        "properties": {},
+        "widgets_values": ["items"]
+      },
+      {
+        "id": 5,
+        "type": "Dictionary/ArrayLengthNode",
+        "pos": [1380, 150],
+        "size": {"0": 200, "1": 60},
+        "flags": {},
+        "order": 4,
+        "mode": 0,
+        "inputs": [
+          {
+            "name": "array_in",
+            "type": "*",
+            "link": 4
+          }
+        ],
+        "outputs": [
+          {
+            "name": "length",
+            "type": "NUMBER",
+            "links": [5],
+            "slot_index": 0
+          },
+          {
+            "name": "error",
+            "type": "TEXT",
+            "links": null
+          }
+        ],
+        "properties": {},
+        "widgets_values": []
+      },
+      {
+        "id": 6,
+        "type": "Input/NumberNode",
+        "pos": [1380, 270],
+        "size": {"0": 200, "1": 58},
+        "flags": {},
+        "order": 5,
+        "mode": 0,
+        "outputs": [
+          {
+            "name": "number_out",
+            "type": "NUMBER",
+            "links": [6],
+            "slot_index": 0
+          }
+        ],
+        "properties": {},
+        "widgets_values": [3]
+      },
+      {
+        "id": 7,
+        "type": "Testing/AssertNode",
+        "pos": [1660, 200],
+        "size": {"0": 180, "1": 60},
+        "flags": {},
+        "order": 6,
+        "mode": 0,
+        "inputs": [
+          {
+            "name": "actual",
+            "type": "*",
+            "link": 5
+          },
+          {
+            "name": "expected",
+            "type": "*",
+            "link": 6
+          }
+        ],
+        "outputs": [
+          {
+            "name": "on_success",
+            "type": "*",
+            "links": null
+          },
+          {
+            "name": "on_failure",
+            "type": "*",
+            "links": null
+          }
+        ],
+        "properties": {},
+        "widgets_values": []
+      }
+    ],
+    "links": [
+      [1, 1, 0, 2, 0, "*"],
+      [2, 2, 0, 3, 0, "DICTIONARY"],
+      [3, 3, 0, 4, 0, "DICTIONARY"],
+      [4, 4, 0, 5, 0, "*"],
+      [5, 5, 0, 7, 0, "NUMBER"],
+      [6, 6, 0, 7, 1, "NUMBER"]
+    ],
+    "groups": [],
+    "config": {},
+    "extra": {},
+    "version": 0.4
+  },
+  "start_node_id": "1"
+}
