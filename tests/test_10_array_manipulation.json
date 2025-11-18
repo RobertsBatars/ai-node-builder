@@ -54,7 +54,7 @@
           }
         ],
         "properties": {},
-        "widgets_values": ["numbers"],
+        "widgets_values": ["numbers"]
       },
       {
         "id": 3,
@@ -190,7 +190,7 @@
           }
         ],
         "properties": {},
-        "widgets_values": ["numbers"],
+        "widgets_values": ["numbers"]
       },
       {
         "id": 8,

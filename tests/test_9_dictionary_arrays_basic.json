@@ -54,7 +54,7 @@
           }
         ],
         "properties": {},
-        "widgets_values": ["scores"],
+        "widgets_values": ["scores"]
       },
       {
         "id": 3,
