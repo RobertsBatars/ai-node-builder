@@ -85,7 +85,7 @@
           }
         ],
         "properties": {},
-        "widgets_values": ["numeric_only"],
+        "widgets_values": ["numeric_only"]
       },
       {
         "id": 4,
@@ -116,7 +116,7 @@
           }
         ],
         "properties": {},
-        "widgets_values": [],
+        "widgets_values": []
       },
       {
         "id": 5,
@@ -135,7 +135,7 @@
           }
         ],
         "properties": {},
-        "widgets_values": [4],
+        "widgets_values": [4]
       },
       {
         "id": 6,
@@ -170,7 +170,7 @@
           }
         ],
         "properties": {},
-        "widgets_values": [],
+        "widgets_values": []
       },
       {
         "id": 7,
@@ -201,7 +201,7 @@
           }
         ],
         "properties": {},
-        "widgets_values": ["json", ", ", true],
+        "widgets_values": ["json", ", ", true]
       },
       {
         "id": 8,
@@ -226,7 +226,7 @@
           }
         ],
         "properties": {},
-        "widgets_values": ["LOG"],
+        "widgets_values": ["LOG"]
       }
     ],
     "links": [
