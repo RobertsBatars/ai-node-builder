@@ -140,7 +140,7 @@
           }
         ],
         "properties": {},
-        "widgets_values": [],
+        "widgets_values": []
       },
       {
         "id": 6,
@@ -159,7 +159,7 @@
           }
         ],
         "properties": {},
-        "widgets_values": [99],
+        "widgets_values": [99]
       },
       {
         "id": 7,
@@ -276,7 +276,7 @@
           }
         ],
         "properties": {},
-        "widgets_values": [99],
+        "widgets_values": [99]
       },
       {
         "id": 11,
@@ -311,7 +311,7 @@
           }
         ],
         "properties": {},
-        "widgets_values": [],
+        "widgets_values": []
       }
     ],
     "links": [
