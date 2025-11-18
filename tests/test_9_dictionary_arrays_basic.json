@@ -23,7 +23,7 @@
         "widgets_values": [
           "{\"name\": \"Alice\", \"scores\": [95, 87, 92], \"tags\": [\"admin\", \"premium\"], \"active\": true}",
           10
-        ],
+        ]
       },
       {
         "id": 2,
